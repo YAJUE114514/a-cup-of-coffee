@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🐳 地图编辑器 · a cup of coffee</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/editor.css">
+</head>
+<body>
+  <div id="editor-app">
+    <header>
+      <h1>🐳 a cup of coffee · 地图编辑器</h1>
+      <p class="sub">画关卡 → 导出 JSON → 粘贴进 <code>levels.js</code> · 也可以粘贴关卡 JSON 回来继续改</p>
+    </header>
+
+    <!-- 关卡信息 -->
+    <section class="meta">
+      <label>ID <input id="meta-id" placeholder="level_01"></label>
+      <label>关卡名 <input id="meta-name" placeholder="我的关卡"></label>
+      <label>hana 台词 <input id="meta-line" placeholder="……"></label>
+    </section>
+
+    <main class="workspace">
+      <!-- 工具面板 -->
+      <aside class="palette">
+        <div class="palette-title">地形</div>
+        <div class="palette-buttons" id="tools-terrain"></div>
+
+        <div class="palette-title">物品</div>
+        <div class="palette-buttons" id="tools-item"></div>
+
+        <div class="palette-title">玩家</div>
+        <div class="palette-buttons" id="tools-player"></div>
+        <div class="palette-title">起手</div>
+        <select id="hand-select"></select>
+
+        <div class="palette-title">网格尺寸</div>
+        <div class="size-inputs">
+          <label>宽 <input type="number" id="cols-input" min="4" max="12" value="8"></label>
+          <label>高 <input type="number" id="rows-input" min="4" max="12" value="6"></label>
+        </div>
+      </aside>
+
+      <!-- 画布 -->
+      <section class="canvas-wrap">
+        <div id="canvas"></div>
+      </section>
+    </main>
+
+    <!-- 导出区 -->
+    <section class="export">
+      <div class="export-tools">
+        <button id="btn-export">📤 导出 JSON</button>
+        <button id="btn-copy">📋 复制</button>
+        <button id="btn-load">📥 加载关卡</button>
+        <button id="btn-clear">🗑 清空</button>
+      </div>
+      <div id="warnings" class="warnings"></div>
+      <textarea id="output" placeholder="导出的 JSON 会显示在这里；粘贴关卡 JSON 后点「加载关卡」可编辑已有关卡……"></textarea>
+    </section>
+  </div>
+
+  <script type="module" src="js/editor/editor.js"></script>
+</body>
+</html>

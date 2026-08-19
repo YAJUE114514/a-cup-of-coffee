@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🐳 a cup of coffee</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- 标题界面 -->
+    <section id="screen-title" class="screen active">
+      <img src="assets/hana.png" alt="hana" class="title-hana">
+      <h1 class="game-title">a cup of coffee</h1>
+      <p class="tagline">小虎鲸 hana 的实验室咖啡大作战</p>
+      <button id="btn-start" class="primary-btn">开始游戏</button>
+      <a href="editor.html" class="editor-link">🛠 地图编辑器</a>
+    </section>
+
+    <!-- 关卡选择界面 -->
+    <section id="screen-levels" class="screen">
+      <h2 class="screen-heading">选择关卡</h2>
+      <div id="level-list" class="level-list"></div>
+      <button id="btn-back-title" class="ghost-btn">← 返回</button>
+    </section>
+
+    <!-- 关卡过渡界面（加载 / 重置时显示，游戏时不显示） -->
+    <section id="screen-intro" class="screen">
+      <div class="intro-card">
+        <p id="intro-index" class="intro-index"></p>
+        <h2 id="intro-name"></h2>
+        <p id="intro-hint" class="intro-hint"></p>
+        <button id="btn-begin" class="primary-btn">开始 →</button>
+        <p class="intro-tip">数秒后自动开始 · 方向键 / 空格 立即开始</p>
+      </div>
+    </section>
+
+    <!-- 游戏界面（极简：基本只显示格子） -->
+    <section id="screen-game" class="screen">
+      <div id="hand" class="hud"></div>
+      <div id="board"></div>
+      <button id="reset-btn" class="ghost-btn">↺ 重置 (R)</button>
+      <p id="hana-tip" class="hana-tip hidden"></p>
+
+      <div id="win-overlay" class="hidden">
+        <p id="win-text">搞定！下一间实验室。</p>
+        <button id="next-btn" class="primary-btn">下一关 ▶</button>
+      </div>
+    </section>
+
+  </div>
+  <script type="module" src="js/game/main.js"></script>
+</body>
+</html>
