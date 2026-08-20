@@ -19,6 +19,9 @@ let levelIndex = 0;
 let resetCount = 0;      // 当前关内的重置次数（进入新关归零）
 let introTimer = null;   // 过渡界面自动开始定时器
 let tipTimer = null;     // hana 台词自动消失定时器
+let noInputTimer = null;         // 第一关「无输入提示」定时器
+let tutorialHint = null;         // 当前教程提示类型：null | 'move' | 'combine'
+let tutorialCombineShown = false;
 
 const INTRO_AUTO_MS = 2500; // 过渡界面停留时间
 
@@ -43,10 +46,18 @@ const HANA_TIPS = [
   '迷宫是墙构成的，思路是空隙构成的。',
 ];
 
+// 第一关教程
+const isTutorial = () => levelIndex === 0;
+const TUTORIAL_MOVE = '用方向键或者 wasd 都可以控制我移动。';
+const TUTORIAL_COMBINE = '对，然后把它们组合到一起……';
+const TUTORIAL_WIN = '把所有东西都变成咖啡就可以通关啦！是不是很简单？';
+const WIN_TEXT_DEFAULT = '搞定！下一间实验室。';
+
 // ---- DOM ----
 const boardEl = document.getElementById('board');
 const handEl = document.getElementById('hand');
 const winOverlayEl = document.getElementById('win-overlay');
+const winTextEl = document.getElementById('win-text');
 const nextBtn = document.getElementById('next-btn');
 const resetBtn = document.getElementById('reset-btn');
 const levelListEl = document.getElementById('level-list');
@@ -85,6 +96,8 @@ function enterIntro() {
   document.getElementById('intro-hint').textContent = lv.hanaLine || '';
   winOverlayEl.classList.add('hidden');
   hanaTipEl.classList.add('hidden');
+  clearTimeout(noInputTimer);
+  tutorialHint = null;
   showScreen('intro');
 
   clearTimeout(introTimer);
@@ -97,6 +110,40 @@ function startGame() {
   state = createGameState(LEVELS[levelIndex]);
   showScreen('game');
   draw();
+  setupTutorial();
+}
+
+/**
+ * 第一关教程：
+ *  - 进入后 10 秒无输入 → 提示用方向键移动
+ *  - 第一次捡起物品 → 提示组合
+ *  - 通关 → 提示「都变成咖啡」
+ */
+function setupTutorial() {
+  clearTimeout(noInputTimer);
+  tutorialHint = null;
+  hanaTipEl.classList.add('hidden');
+  if (isTutorial()) {
+    tutorialCombineShown = false;
+    noInputTimer = setTimeout(showMoveHint, 10000);
+  }
+}
+
+function showMoveHint() {
+  if (!isTutorial()) return;
+  showTutorialTip('move', TUTORIAL_MOVE);
+}
+
+function showTutorialTip(type, msg) {
+  tutorialHint = type;
+  hanaTipEl.textContent = `“${msg}”`;
+  hanaTipEl.classList.remove('hidden');
+}
+
+function hideTutorialTip(type) {
+  if (type && tutorialHint !== type) return; // 只隐藏指定类型，避免误关其他提示
+  tutorialHint = null;
+  hanaTipEl.classList.add('hidden');
 }
 
 /** 重置当前关：直接重开，多次后概率冒出 hana 的话 */
@@ -151,14 +198,26 @@ window.addEventListener('keydown', (e) => {
 
     if (move) {
       e.preventDefault();
+      // 玩家开始移动：取消「无输入」定时器，隐藏移动教程提示
+      clearTimeout(noInputTimer);
+      hideTutorialTip('move');
       // 记录朝向（素材朝右，向左走要翻转）
       if (move[0] < 0) state.player.facing = 'left';
       else if (move[0] > 0) state.player.facing = 'right';
-      step(state, move[0], move[1]);
+      const result = step(state, move[0], move[1]);
       draw();
+
+      // 第一关教程：第一次捡起物品 → 提示组合
+      if (isTutorial() && !tutorialCombineShown && result.action === 'pickup') {
+        tutorialCombineShown = true;
+        showTutorialTip('combine', TUTORIAL_COMBINE);
+      } else if (result.action === 'combine') {
+        hideTutorialTip('combine');
+      }
 
       if (checkWin(state)) {
         state.win = true;
+        winTextEl.textContent = isTutorial() ? TUTORIAL_WIN : WIN_TEXT_DEFAULT;
         winOverlayEl.classList.remove('hidden');
       }
       return;
