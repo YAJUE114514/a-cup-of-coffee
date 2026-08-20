@@ -291,6 +291,15 @@ button:active { transform: scale(0.97); }
   font-size: 13px;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
+/* 手持匹配物品时：门变浅色（接近地板）、标注变透明 */
+.cell.gate.ok {
+  background: var(--floor);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+.cell.gate.ok .gate-require,
+.cell.gate.ok .gate-lock {
+  opacity: 0.35;
+}
 
 /* 物品与玩家 */
 .item {

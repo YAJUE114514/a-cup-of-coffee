@@ -86,3 +86,13 @@ export function typeToTag(type) {
     default:           return null;
   }
 }
+
+/**
+ * 手持物品是否满足检查门要求。
+ * require 可为具体物品，或通配值 'tag'（任意标签都通过）。
+ */
+export function requireMatches(require, hand) {
+  if (hand === null) return false;
+  if (require === TAG_REQUIRE) return isTag(hand);
+  return hand === require;
+}

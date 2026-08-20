@@ -10,7 +10,9 @@
  *  - 地形：压力板 / 机关门 / 检查门
  */
 
-import { TYPES, TYPE_INFO, WALL, PLATE, DOOR, GATE, TAG_REQUIRE, isTag } from '../data/types.js';
+import {
+  TYPES, TYPE_INFO, WALL, PLATE, DOOR, GATE, TAG_REQUIRE, isTag, requireMatches,
+} from '../data/types.js';
 import { itemAt } from './state.js';
 
 const ASSET = {
@@ -67,6 +69,10 @@ export function renderBoard(container, state) {
       } else if (t === GATE) {
         const gate = state.gates.find(g => g.x === x && g.y === y);
         if (gate) {
+          // 手持物品满足要求时，门变浅色（可通过提示）
+          if (requireMatches(gate.require, state.player.hand)) {
+            cell.classList.add('ok');
+          }
           // require 为 'tag'（任意标签）时用 tag_tag 图作为通用标签图标
           const reqType = gate.require === TAG_REQUIRE ? TYPES.TAG_TAG : gate.require;
           const req = buildItemIcon(reqType);
