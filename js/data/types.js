@@ -30,6 +30,9 @@ export const PLATE = 'P';   // 压力板：站上去打开机关门
 export const DOOR = 'D';    // 机关门：压力板触发开/关
 export const GATE = 'G';    // 检查门：需手持指定物品才能通过
 
+// 检查门 require 的通配值：要求「任意 tag」都能通过
+export const TAG_REQUIRE = 'tag';
+
 // 地形展示信息（编辑器用）
 export const TILE_INFO = Object.freeze({
   [WALL]:  { label: '墙',      emoji: '▦' },

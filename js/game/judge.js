@@ -14,8 +14,18 @@
  * step(state, dx, dy) 会真实移动玩家并返回动作结果，供 UI 反馈。
  */
 
-import { TYPES, isTag, tagTargetType, typeToTag, WALL, DOOR, GATE, PLATE } from '../data/types.js';
+import {
+  TYPES, isTag, tagTargetType, typeToTag,
+  WALL, DOOR, GATE, PLATE, TAG_REQUIRE,
+} from '../data/types.js';
 import { itemAt, removeItem, addItem } from './state.js';
+
+/** 手持物品是否满足检查门要求（require 可为具体物品，或 'tag' 通配任意标签） */
+function requireMatches(gate, hand) {
+  if (hand === null) return false;
+  if (gate.require === TAG_REQUIRE) return isTag(hand);
+  return hand === gate.require;
+}
 
 /** 目标格是否阻挡玩家进入 */
 function isBlocked(state, x, y) {
@@ -24,7 +34,7 @@ function isBlocked(state, x, y) {
   if (t === DOOR && !state.doorOpen) return true;
   if (t === GATE) {
     const gate = state.gates.find(g => g.x === x && g.y === y);
-    if (gate && state.player.hand !== gate.require) return true;
+    if (gate && !requireMatches(gate, state.player.hand)) return true;
   }
   return false;
 }

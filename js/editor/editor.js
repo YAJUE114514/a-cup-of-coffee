@@ -8,7 +8,7 @@
  */
 
 import {
-  TYPES, TYPE_INFO, WALL, FLOOR, PLATE, DOOR, GATE,
+  TYPES, TYPE_INFO, WALL, FLOOR, PLATE, DOOR, GATE, TAG_REQUIRE,
 } from '../data/types.js';
 
 // ---- DOM ----
@@ -64,6 +64,11 @@ const HOLDABLE = [
   { value: TYPES.TAG_TAG, label: '标签·标签' },
 ];
 const HAND_OPTIONS = [{ value: '', label: '空手' }, ...HOLDABLE];
+// 检查门要求：具体物品 + 「任意标签」通配
+const GATE_REQUIRE_OPTIONS = [
+  ...HOLDABLE,
+  { value: TAG_REQUIRE, label: '标签·任意' },
+];
 
 // ---- 工具 ----
 function makeGrid(cols, rows, fill) {
@@ -136,7 +141,7 @@ function buildPalette() {
 
   // 检查门要求下拉
   const gs = document.getElementById('gate-require');
-  for (const h of HOLDABLE) {
+  for (const h of GATE_REQUIRE_OPTIONS) {
     const opt = document.createElement('option');
     opt.value = h.value;
     opt.textContent = h.label;
@@ -181,11 +186,12 @@ function renderCanvas() {
         cell.appendChild(ic);
       } else if (t === GATE) {
         const gate = editor.gates.find(g => g.x === x && g.y === y);
-        const info = TYPE_INFO[gate ? gate.require : TYPES.BEANS];
+        const isAny = gate && gate.require === TAG_REQUIRE;
+        const info = TYPE_INFO[isAny ? TYPES.TAG_TAG : (gate ? gate.require : TYPES.BEANS)];
         const req = document.createElement('span');
         req.className = 'gate-req-editor';
-        req.textContent = info.emoji;
-        req.title = info.label;
+        req.textContent = isAny ? '🏷️' : info.emoji;
+        req.title = isAny ? '任意标签' : info.label;
         cell.appendChild(req);
         const lk = document.createElement('span');
         lk.className = 'gate-lock';
