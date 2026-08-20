@@ -4,6 +4,8 @@
  * 只负责「存数据」，不负责规则判定（见 judge.js）。
  */
 
+import { PLATE } from '../data/types.js';
+
 /**
  * 由关卡数据创建一份独立运行状态。
  * 物品会深拷贝，避免修改 levels.js 里的源数据。
@@ -16,6 +18,9 @@ export function createGameState(level) {
     cols: level.cols,
     rows: level.rows,
     grid: level.grid,
+    gates: (level.gates || []).map(g => ({ ...g })), // 检查门 {x,y,require}
+    // 机关门是否被压力板触发打开（起点若在压力板上则初始为开）
+    doorOpen: level.grid[level.player.y][level.player.x] === PLATE,
     player: {
       x: level.player.x,
       y: level.player.y,

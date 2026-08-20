@@ -7,9 +7,10 @@
  *  - 玩家 hana 素材朝右，向左移动时整体翻转（scaleX(-1)）
  *  - 手持物品时用 hana_holding，并在右上角空白区叠加手持物品小图
  *  - 普通物品用物品图；tag 物品用专门的 tag 图（tag_*.png）
+ *  - 地形：压力板 / 机关门 / 检查门
  */
 
-import { TYPES, TYPE_INFO, WALL, isTag } from '../data/types.js';
+import { TYPES, TYPE_INFO, WALL, PLATE, DOOR, GATE, isTag } from '../data/types.js';
 import { itemAt } from './state.js';
 
 const ASSET = {
@@ -27,7 +28,7 @@ const TAG_ASSET = {
   [TYPES.TAG_TAG]:    'assets/tag_tag.png',
 };
 
-/** 构造物品图标，复用于格子 / HUD / 手持叠加 */
+/** 构造物品图标，复用于格子 / HUD / 手持叠加 / 检查门 */
 function buildItemIcon(type) {
   const el = document.createElement('div');
   el.className = 'item-icon' + (isTag(type) ? ' tag-icon' : '');
@@ -45,7 +46,36 @@ export function renderBoard(container, state) {
   for (let y = 0; y < state.rows; y++) {
     for (let x = 0; x < state.cols; x++) {
       const cell = document.createElement('div');
-      cell.className = 'cell ' + (state.grid[y][x] === WALL ? 'wall' : 'floor');
+      const t = state.grid[y][x];
+      let cls = 'cell floor';
+      if (t === WALL) cls = 'cell wall';
+      else if (t === PLATE) cls = 'cell plate';
+      else if (t === DOOR) cls = 'cell door' + (state.doorOpen ? ' open' : '');
+      else if (t === GATE) cls = 'cell gate';
+      cell.className = cls;
+
+      // 地形上的装饰
+      if (t === PLATE) {
+        const dot = document.createElement('span');
+        dot.className = 'plate-dot';
+        cell.appendChild(dot);
+      } else if (t === DOOR && !state.doorOpen) {
+        const icon = document.createElement('span');
+        icon.className = 'door-icon';
+        icon.textContent = '🚪';
+        cell.appendChild(icon);
+      } else if (t === GATE) {
+        const gate = state.gates.find(g => g.x === x && g.y === y);
+        if (gate) {
+          const req = buildItemIcon(gate.require);
+          req.classList.add('gate-require');
+          cell.appendChild(req);
+        }
+        const lock = document.createElement('span');
+        lock.className = 'gate-lock';
+        lock.textContent = '🔒';
+        cell.appendChild(lock);
+      }
 
       const item = itemAt(state, x, y);
       if (item) cell.appendChild(itemEl(item));

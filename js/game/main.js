@@ -11,7 +11,7 @@
 
 import { LEVELS } from '../data/levels.js';
 import { createGameState } from './state.js';
-import { step, checkWin } from './judge.js';
+import { step, checkWin, drop } from './judge.js';
 import { renderBoard, renderHand } from './renderer.js';
 
 let state = null;
@@ -161,6 +161,12 @@ window.addEventListener('keydown', (e) => {
         state.win = true;
         winOverlayEl.classList.remove('hidden');
       }
+      return;
+    }
+
+    if (key === 'f' || key === 'F') {
+      drop(state); // 放下手持物品到脚下
+      draw();
       return;
     }
 

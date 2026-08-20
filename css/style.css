@@ -207,6 +207,16 @@ button:active { transform: scale(0.97); }
   max-width: 480px;
 }
 
+.game-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.control-tip {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
 /* 棋盘：深褐背景上浮出浅色路径块 */
 #board {
   display: grid;
@@ -233,6 +243,49 @@ button:active { transform: scale(0.97); }
 .cell.wall {
   background: var(--wall);
   box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+/* 压力板：浅色地板 + 金色圆形按钮 */
+.cell.plate {
+  background: var(--floor);
+  box-shadow: inset 0 0 0 3px rgba(217, 160, 91, 0.55);
+}
+.cell.plate .plate-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* 机关门：默认关闭（像墙），被压力板触发后打开（像地板） */
+.cell.door {
+  background: var(--wall);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+.cell.door.open {
+  background: var(--floor);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+.cell.door .door-icon {
+  font-size: 24px;
+}
+
+/* 检查门：需要手持指定物品才能通过 */
+.cell.gate {
+  background: #4a3a2a;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.4);
+}
+.cell.gate .gate-require {
+  width: 60%;
+  height: 60%;
+}
+.cell.gate .gate-lock {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 13px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
 }
 
 /* 物品与玩家 */

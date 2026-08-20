@@ -181,6 +181,11 @@ header h1 {
   z-index: 2;
 }
 
+/* 检查门在编辑器里的要求物品 emoji */
+#canvas .cell .gate-req-editor {
+  font-size: 15px;
+}
+
 #canvas .cell .player {
   font-size: 24px;
   animation: none;

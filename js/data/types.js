@@ -26,6 +26,18 @@ export const TYPES = Object.freeze({
 // 地图格子
 export const WALL = 'W';
 export const FLOOR = 'F';
+export const PLATE = 'P';   // 压力板：站上去打开机关门
+export const DOOR = 'D';    // 机关门：压力板触发开/关
+export const GATE = 'G';    // 检查门：需手持指定物品才能通过
+
+// 地形展示信息（编辑器用）
+export const TILE_INFO = Object.freeze({
+  [WALL]:  { label: '墙',      emoji: '▦' },
+  [FLOOR]: { label: '地板',    emoji: '▣' },
+  [PLATE]: { label: '压力板',  emoji: '⬤' },
+  [DOOR]:  { label: '机关门',  emoji: '🚪' },
+  [GATE]:  { label: '检查门',  emoji: '🔒' },
+});
 
 // 展示信息：emoji + 中文名
 export const TYPE_INFO = Object.freeze({

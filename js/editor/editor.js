@@ -3,11 +3,13 @@
  * 地图编辑器 —— 画关卡 → 导出 JSON → 粘贴进 levels.js
  *
  * 复用 js/data/types.js 作为唯一事实来源，物品面板与游戏自动同步。
- * 格子分三层：地形(墙/地板) + 物品(7种) + 玩家起点。
- * 墙格不能放物品/玩家（否则物品永远捡不到）。
+ * 格子分三层：地形(墙/地板/压力板/机关门/检查门) + 物品(7种) + 玩家起点。
+ * 墙/门等阻挡地形格不能放物品/玩家。
  */
 
-import { TYPES, TYPE_INFO, WALL, FLOOR } from '../data/types.js';
+import {
+  TYPES, TYPE_INFO, WALL, FLOOR, PLATE, DOOR, GATE,
+} from '../data/types.js';
 
 // ---- DOM ----
 const canvas = document.getElementById('canvas');
@@ -17,6 +19,7 @@ const metaLine = document.getElementById('meta-line');
 const colsInput = document.getElementById('cols-input');
 const rowsInput = document.getElementById('rows-input');
 const handSelect = document.getElementById('hand-select');
+const gateRequireSelect = document.getElementById('gate-require');
 const output = document.getElementById('output');
 const warningsEl = document.getElementById('warnings');
 const btnExport = document.getElementById('btn-export');
@@ -28,17 +31,22 @@ const btnLoad = document.getElementById('btn-load');
 const editor = {
   cols: 8,
   rows: 6,
-  grid: [],      // 'F' / 'W'
-  itemGrid: [],  // null / type
-  playerStart: null, // { x, y } 或 null
+  grid: [],           // 地形字符
+  itemGrid: [],       // null / type
+  playerStart: null,  // { x, y } 或 null
   hand: null,
+  gateRequire: TYPES.BEANS, // 画检查门时用的要求物品
+  gates: [],          // 检查门记录 [{x,y,require}]
   tool: 'floor',
 };
 
-// 工具清单
+// 地形工具
 const TERRAIN_TOOLS = [
-  { tool: 'floor', label: '地板', emoji: '▣' },
-  { tool: 'wall',  label: '墙',   emoji: '▦' },
+  { tool: 'floor', label: '地板',   emoji: '▣' },
+  { tool: 'wall',  label: '墙',     emoji: '▦' },
+  { tool: 'plate', label: '压力板', emoji: '⬤' },
+  { tool: 'door',  label: '机关门', emoji: '🚪' },
+  { tool: 'gate',  label: '检查门', emoji: '🔒' },
 ];
 // 物品面板的第一个按钮：清空该格物品
 const ERASE_ITEM_TOOL = { tool: 'none_item', label: '空', emoji: '✖️' };
@@ -48,7 +56,6 @@ const ITEM_TOOLS = [
 ];
 // 起手可选（不含 coffee：规则上咖啡不可携带）
 const HOLDABLE = [
-  { value: '', label: '空手' },
   { value: TYPES.BEANS, label: '咖啡豆' },
   { value: TYPES.CUP, label: '杯子' },
   { value: TYPES.TAG_BEANS, label: '标签·豆' },
@@ -56,10 +63,20 @@ const HOLDABLE = [
   { value: TYPES.TAG_COFFEE, label: '标签·咖啡' },
   { value: TYPES.TAG_TAG, label: '标签·标签' },
 ];
+const HAND_OPTIONS = [{ value: '', label: '空手' }, ...HOLDABLE];
 
 // ---- 工具 ----
 function makeGrid(cols, rows, fill) {
   return Array.from({ length: rows }, () => Array(cols).fill(fill));
+}
+
+/** 清掉某格的物品 / 玩家 / 检查门记录（画阻挡地形时用） */
+function clearCellExtra(x, y) {
+  editor.itemGrid[y][x] = null;
+  if (editor.playerStart && editor.playerStart.x === x && editor.playerStart.y === y) {
+    editor.playerStart = null;
+  }
+  editor.gates = editor.gates.filter(g => !(g.x === x && g.y === y));
 }
 
 // ---- 工具面板 ----
@@ -108,12 +125,22 @@ function buildPalette() {
   pb.addEventListener('click', () => selectTool('player'));
   playerEl.appendChild(pb);
 
+  // 起手下拉
   const hs = document.getElementById('hand-select');
-  for (const h of HOLDABLE) {
+  for (const h of HAND_OPTIONS) {
     const opt = document.createElement('option');
     opt.value = h.value;
     opt.textContent = h.label;
     hs.appendChild(opt);
+  }
+
+  // 检查门要求下拉
+  const gs = document.getElementById('gate-require');
+  for (const h of HOLDABLE) {
+    const opt = document.createElement('option');
+    opt.value = h.value;
+    opt.textContent = h.label;
+    gs.appendChild(opt);
   }
 }
 
@@ -132,9 +159,39 @@ function renderCanvas() {
   for (let y = 0; y < editor.rows; y++) {
     for (let x = 0; x < editor.cols; x++) {
       const cell = document.createElement('div');
-      cell.className = 'cell ' + (editor.grid[y][x] === WALL ? 'wall' : 'floor');
+      const t = editor.grid[y][x];
+      let cls = 'cell floor';
+      if (t === WALL) cls = 'cell wall';
+      else if (t === PLATE) cls = 'cell plate';
+      else if (t === DOOR) cls = 'cell door';
+      else if (t === GATE) cls = 'cell gate';
+      cell.className = cls;
       cell.dataset.x = x;
       cell.dataset.y = y;
+
+      // 地形标识
+      if (t === PLATE) {
+        const d = document.createElement('span');
+        d.className = 'plate-dot';
+        cell.appendChild(d);
+      } else if (t === DOOR) {
+        const ic = document.createElement('span');
+        ic.className = 'door-icon';
+        ic.textContent = '🚪';
+        cell.appendChild(ic);
+      } else if (t === GATE) {
+        const gate = editor.gates.find(g => g.x === x && g.y === y);
+        const info = TYPE_INFO[gate ? gate.require : TYPES.BEANS];
+        const req = document.createElement('span');
+        req.className = 'gate-req-editor';
+        req.textContent = info.emoji;
+        req.title = info.label;
+        cell.appendChild(req);
+        const lk = document.createElement('span');
+        lk.className = 'gate-lock';
+        lk.textContent = '🔒';
+        cell.appendChild(lk);
+      }
 
       const itemType = editor.itemGrid[y][x];
       if (itemType) {
@@ -165,23 +222,34 @@ function paintCell(x, y) {
   switch (tool) {
     case 'floor':
       editor.grid[y][x] = FLOOR;
+      clearCellExtra(x, y);
       break;
     case 'wall':
       editor.grid[y][x] = WALL;
-      editor.itemGrid[y][x] = null; // 墙格不能放物品
-      if (editor.playerStart && editor.playerStart.x === x && editor.playerStart.y === y) {
-        editor.playerStart = null; // 玩家也不能进墙里
-      }
+      clearCellExtra(x, y);
+      break;
+    case 'plate':
+      editor.grid[y][x] = PLATE;
+      clearCellExtra(x, y);
+      break;
+    case 'door':
+      editor.grid[y][x] = DOOR;
+      clearCellExtra(x, y);
+      break;
+    case 'gate':
+      editor.grid[y][x] = GATE;
+      clearCellExtra(x, y);
+      editor.gates.push({ x, y, require: editor.gateRequire });
       break;
     case 'player':
-      if (editor.grid[y][x] === WALL) break; // 墙格不能放
+      if (editor.grid[y][x] === WALL || editor.grid[y][x] === DOOR || editor.grid[y][x] === GATE) break;
       editor.playerStart = { x, y };
       break;
     case 'none_item': // 「空」：清除该格物品
       editor.itemGrid[y][x] = null;
       break;
     default: // 物品 type
-      if (editor.grid[y][x] === WALL) break; // 墙格不能放
+      if (editor.grid[y][x] === WALL || editor.grid[y][x] === DOOR || editor.grid[y][x] === GATE) break;
       editor.itemGrid[y][x] = tool;
       break;
   }
@@ -211,6 +279,7 @@ function resizeGrid() {
   if (editor.playerStart && (editor.playerStart.x >= cols || editor.playerStart.y >= rows)) {
     editor.playerStart = null;
   }
+  editor.gates = editor.gates.filter(g => g.x < cols && g.y < rows);
   renderCanvas();
 }
 
@@ -269,6 +338,9 @@ function exportLevel() {
     },
     items: collectItems(),
   };
+  if (editor.gates.length) {
+    level.gates = editor.gates.map(g => ({ ...g }));
+  }
 
   output.value = JSON.stringify(level, null, 2);
   renderWarnings(warnings);
@@ -314,7 +386,7 @@ function loadLevel(text) {
     if (
       it && Number.isInteger(it.x) && Number.isInteger(it.y)
       && it.x >= 0 && it.x < cols && it.y >= 0 && it.y < rows
-      && editor.grid[it.y][it.x] !== WALL
+      && editor.grid[it.y][it.x] === FLOOR
     ) {
       editor.itemGrid[it.y][it.x] = it.type;
     }
@@ -325,12 +397,21 @@ function loadLevel(text) {
     : null;
   editor.hand = (level.player && level.player.hand) || null;
 
+  // 检查门记录
+  editor.gates = (level.gates || [])
+    .filter(g => Number.isInteger(g.x) && Number.isInteger(g.y) && g.x >= 0 && g.x < cols && g.y >= 0 && g.y < rows)
+    .map(g => ({ x: g.x, y: g.y, require: g.require || TYPES.BEANS }));
+  if (editor.gates.length) {
+    editor.gateRequire = editor.gates[0].require;
+  }
+
   metaId.value = level.id || '';
   metaName.value = level.name || '';
   metaLine.value = level.hanaLine || '';
   colsInput.value = cols;
   rowsInput.value = rows;
   handSelect.value = editor.hand ?? '';
+  gateRequireSelect.value = editor.gateRequire;
   output.value = '';
   warningsEl.textContent = '';
 
@@ -373,6 +454,9 @@ function bindEvents() {
   handSelect.addEventListener('change', () => {
     editor.hand = handSelect.value || null;
   });
+  gateRequireSelect.addEventListener('change', () => {
+    editor.gateRequire = gateRequireSelect.value;
+  });
   colsInput.addEventListener('change', resizeGrid);
   rowsInput.addEventListener('change', resizeGrid);
 
@@ -399,9 +483,12 @@ function resetEditor() {
   editor.itemGrid = makeGrid(8, 6, null);
   editor.playerStart = null;
   editor.hand = null;
+  editor.gateRequire = TYPES.BEANS;
+  editor.gates = [];
   colsInput.value = 8;
   rowsInput.value = 6;
   handSelect.value = '';
+  gateRequireSelect.value = TYPES.BEANS;
   output.value = '';
   warningsEl.textContent = '';
 }
