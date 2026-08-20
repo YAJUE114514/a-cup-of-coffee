@@ -386,7 +386,7 @@ function loadLevel(text) {
     if (
       it && Number.isInteger(it.x) && Number.isInteger(it.y)
       && it.x >= 0 && it.x < cols && it.y >= 0 && it.y < rows
-      && editor.grid[it.y][it.x] === FLOOR
+      && (editor.grid[it.y][it.x] === FLOOR || editor.grid[it.y][it.x] === PLATE)
     ) {
       editor.itemGrid[it.y][it.x] = it.type;
     }

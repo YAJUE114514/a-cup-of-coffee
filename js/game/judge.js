@@ -29,9 +29,18 @@ function isBlocked(state, x, y) {
   return false;
 }
 
-/** 根据玩家是否站在压力板上，更新机关门状态 */
+/** 更新机关门状态：玩家站上压力板，或压力板上压着物品，都会开门 */
 function updateDoor(state) {
-  state.doorOpen = state.grid[state.player.y][state.player.x] === PLATE;
+  let pressed = state.grid[state.player.y][state.player.x] === PLATE;
+  if (!pressed) {
+    for (const item of state.items) {
+      if (state.grid[item.y][item.x] === PLATE) {
+        pressed = true;
+        break;
+      }
+    }
+  }
+  state.doorOpen = pressed;
 }
 
 export function step(state, dx, dy) {
@@ -112,6 +121,7 @@ export function drop(state) {
   const type = state.player.hand;
   addItem(state, type, state.player.x, state.player.y);
   state.player.hand = null;
+  updateDoor(state); // 物品压到压力板上可能开门
   return { action: 'drop', type };
 }
 

@@ -19,8 +19,9 @@ export function createGameState(level) {
     rows: level.rows,
     grid: level.grid,
     gates: (level.gates || []).map(g => ({ ...g })), // 检查门 {x,y,require}
-    // 机关门是否被压力板触发打开（起点若在压力板上则初始为开）
-    doorOpen: level.grid[level.player.y][level.player.x] === PLATE,
+    // 机关门是否被压力板触发打开（玩家起点在板上，或初始物品压在板上）
+    doorOpen: level.grid[level.player.y][level.player.x] === PLATE
+      || (level.items || []).some(i => level.grid[i.y][i.x] === PLATE),
     player: {
       x: level.player.x,
       y: level.player.y,
