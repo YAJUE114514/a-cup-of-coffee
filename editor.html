@@ -15,13 +15,13 @@
     </header>
 
     <!-- 关卡信息 -->
-    <section class="meta">
+    <section class="meta" id="editor-meta">
       <label>ID <input id="meta-id" placeholder="level_01"></label>
       <label>关卡名 <input id="meta-name" placeholder="我的关卡"></label>
       <label>hana 台词 <input id="meta-line" placeholder="……"></label>
     </section>
 
-    <main class="workspace">
+    <main class="workspace" id="editor-workspace">
       <!-- 工具面板 -->
       <aside class="palette">
         <div class="palette-title">地形</div>
@@ -51,8 +51,9 @@
     </main>
 
     <!-- 导出区 -->
-    <section class="export">
+    <section class="export" id="editor-export">
       <div class="export-tools">
+        <button id="btn-test" class="tool-btn test-btn">▶ 测试</button>
         <button id="btn-export">📤 导出 JSON</button>
         <button id="btn-copy">📋 复制</button>
         <button id="btn-load">📥 加载关卡</button>
@@ -60,6 +61,21 @@
       </div>
       <div id="warnings" class="warnings"></div>
       <textarea id="output" placeholder="导出的 JSON 会显示在这里；粘贴关卡 JSON 后点「加载关卡」可编辑已有关卡……"></textarea>
+    </section>
+
+    <!-- 试玩模式 -->
+    <section id="test-mode" class="hidden">
+      <div class="test-top">
+        <span class="test-title">▶ 试玩模式</span>
+        <div id="test-hand" class="hud"></div>
+      </div>
+      <div id="test-board"></div>
+      <div class="test-controls">
+        <button id="test-exit" class="ghost-btn">← 返回编辑</button>
+        <button id="test-reset" class="ghost-btn">↺ 重置</button>
+        <span class="control-tip">方向键/WASD 移动 · F 放下 · R 重置 · Esc 返回</span>
+      </div>
+      <p id="test-hana" class="hana-tip hidden"></p>
     </section>
   </div>
 

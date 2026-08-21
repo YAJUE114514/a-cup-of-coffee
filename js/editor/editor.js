@@ -10,6 +10,9 @@
 import {
   TYPES, TYPE_INFO, WALL, FLOOR, PLATE, DOOR, GATE, TAG_REQUIRE,
 } from '../data/types.js';
+import { createGameState } from '../game/state.js';
+import { step, drop, checkWin } from '../game/judge.js';
+import { renderBoard, renderHand } from '../game/renderer.js';
 
 // ---- DOM ----
 const canvas = document.getElementById('canvas');
@@ -26,6 +29,16 @@ const btnExport = document.getElementById('btn-export');
 const btnCopy = document.getElementById('btn-copy');
 const btnClear = document.getElementById('btn-clear');
 const btnLoad = document.getElementById('btn-load');
+const btnTest = document.getElementById('btn-test');
+const editorMeta = document.getElementById('editor-meta');
+const editorWorkspace = document.getElementById('editor-workspace');
+const editorExport = document.getElementById('editor-export');
+const testMode = document.getElementById('test-mode');
+const testBoard = document.getElementById('test-board');
+const testHand = document.getElementById('test-hand');
+const testHana = document.getElementById('test-hana');
+const testExit = document.getElementById('test-exit');
+const testReset = document.getElementById('test-reset');
 
 // ---- 编辑器状态 ----
 const editor = {
@@ -307,36 +320,16 @@ function collectItems() {
   return items;
 }
 
-function exportLevel() {
-  const warnings = [];
-
-  if (!editor.playerStart) {
-    warnings.push('❌ 未设置玩家起点：请先用「🐳 起点」在格子上放一只 hana');
-  }
-
-  if (collectItems().length === 0) {
-    warnings.push('⚠️ 地图上还没有任何物品');
-  }
-
-  if (editor.playerStart) {
-    const startItem = editor.itemGrid[editor.playerStart.y][editor.playerStart.x];
-    if (startItem) {
-      warnings.push(`ℹ️ 玩家起点上有个「${TYPE_INFO[startItem].label}」，开局会站在它上面`);
-    }
-  }
-
-  if (!editor.playerStart) {
-    renderWarnings(warnings);
-    return; // 起点是硬性要求，缺了就不导出
-  }
-
+/** 由编辑器状态组装关卡对象（深拷贝 grid）；无起点返回 null */
+function buildLevelObject() {
+  if (!editor.playerStart) return null;
   const level = {
     id: metaId.value.trim() || 'level_01',
     name: metaName.value.trim() || '未命名关卡',
     hanaLine: metaLine.value.trim(),
     cols: editor.cols,
     rows: editor.rows,
-    grid: editor.grid,
+    grid: editor.grid.map(r => [...r]),
     player: {
       x: editor.playerStart.x,
       y: editor.playerStart.y,
@@ -346,6 +339,30 @@ function exportLevel() {
   };
   if (editor.gates.length) {
     level.gates = editor.gates.map(g => ({ ...g }));
+  }
+  return level;
+}
+
+function exportLevel() {
+  const warnings = [];
+
+  if (!editor.playerStart) {
+    warnings.push('❌ 未设置玩家起点：请先用「🐳 起点」在格子上放一只 hana');
+  }
+  if (collectItems().length === 0) {
+    warnings.push('⚠️ 地图上还没有任何物品');
+  }
+  if (editor.playerStart) {
+    const startItem = editor.itemGrid[editor.playerStart.y][editor.playerStart.x];
+    if (startItem) {
+      warnings.push(`ℹ️ 玩家起点上有个「${TYPE_INFO[startItem].label}」，开局会站在它上面`);
+    }
+  }
+
+  const level = buildLevelObject();
+  if (!level) {
+    renderWarnings(warnings);
+    return; // 起点是硬性要求，缺了就不导出
   }
 
   output.value = JSON.stringify(level, null, 2);
@@ -425,6 +442,85 @@ function loadLevel(text) {
   flashBtn(btnLoad, '✅ 已加载');
 }
 
+// ---- 试玩模式（自己画自己玩）----
+let testState = null;
+
+const TEST_KEYS = {
+  ArrowUp: [0, -1],
+  ArrowDown: [0, 1],
+  ArrowLeft: [-1, 0],
+  ArrowRight: [1, 0],
+  w: [0, -1],
+  s: [0, 1],
+  a: [-1, 0],
+  d: [1, 0],
+};
+
+function enterTest() {
+  const level = buildLevelObject();
+  if (!level) {
+    alert('❌ 请先用「🐳 起点」在格子上放一只 hana，才能试玩');
+    return;
+  }
+  testState = createGameState(level);
+  editorMeta.classList.add('hidden');
+  editorWorkspace.classList.add('hidden');
+  editorExport.classList.add('hidden');
+  testMode.classList.remove('hidden');
+  renderTest();
+}
+
+function renderTest() {
+  renderBoard(testBoard, testState);
+  renderHand(testHand, testState);
+  if (testState.win) {
+    testHana.textContent = '☕ 通关！按 Esc 返回编辑继续调整';
+    testHana.classList.remove('hidden');
+  } else {
+    testHana.classList.add('hidden');
+  }
+}
+
+function exitTest() {
+  testMode.classList.add('hidden');
+  editorMeta.classList.remove('hidden');
+  editorWorkspace.classList.remove('hidden');
+  editorExport.classList.remove('hidden');
+  testHana.classList.add('hidden');
+  testState = null;
+}
+
+function resetTest() {
+  const level = buildLevelObject();
+  if (level) {
+    testState = createGameState(level);
+    testHana.classList.add('hidden');
+    renderTest();
+  }
+}
+
+function handleTestKey(e) {
+  if (!testState) return;
+  if (testState.win) {
+    if (e.key === 'Escape') { e.preventDefault(); exitTest(); }
+    return;
+  }
+  const key = e.key;
+  if (key === 'Escape') { e.preventDefault(); exitTest(); return; }
+  if (key === 'r' || key === 'R') { resetTest(); return; }
+  if (key === 'f' || key === 'F') { drop(testState); renderTest(); return; }
+
+  const move = TEST_KEYS[key] || TEST_KEYS[key.toLowerCase()];
+  if (move) {
+    e.preventDefault();
+    if (move[0] < 0) testState.player.facing = 'left';
+    else if (move[0] > 0) testState.player.facing = 'right';
+    step(testState, move[0], move[1]);
+    if (checkWin(testState)) testState.win = true;
+    renderTest();
+  }
+}
+
 async function copyOutput() {
   if (!output.value) return;
   try {
@@ -472,6 +568,14 @@ function bindEvents() {
   btnClear.addEventListener('click', () => {
     resetEditor();
     renderCanvas();
+  });
+
+  // 试玩模式
+  btnTest.addEventListener('click', enterTest);
+  testExit.addEventListener('click', exitTest);
+  testReset.addEventListener('click', resetTest);
+  window.addEventListener('keydown', (e) => {
+    if (!testMode.classList.contains('hidden')) handleTestKey(e);
   });
 }
 

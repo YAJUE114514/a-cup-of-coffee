@@ -2,6 +2,19 @@
 
 这是一个以“咖啡实验室”为主题的解谜 / 走迷宫小游戏。玩家扮演 hana，在一张格子地图里移动、捡起物品、组合材料，并通过关卡中的逻辑规则完成目标。
 
+## 在线试玩
+
+👉 **在线体验**：<https://YAJUE114514.github.io/a-cup-of-coffee/>
+
+## 本地运行
+
+项目使用 **ES Modules**，不能直接双击 `index.html` 打开（浏览器会拦截）。用以下任一方式启动本地服务器：
+
+- **VS Code**：安装 **Live Server** 插件 → 右键 `index.html` → *Open with Live Server*
+- **命令行**：在项目目录运行 `python -m http.server 8000` → 浏览器打开 `http://localhost:8000`
+
+自带**地图编辑器**（`editor.html`），打开后在编辑器里画好关卡，可以点「测试」直接试玩自己画的关卡。
+
 ## 游戏目标
 
 每一关的核心目标是：
