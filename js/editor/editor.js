@@ -30,6 +30,8 @@ const btnCopy = document.getElementById('btn-copy');
 const btnClear = document.getElementById('btn-clear');
 const btnLoad = document.getElementById('btn-load');
 const btnTest = document.getElementById('btn-test');
+const btnCopyCode = document.getElementById('btn-copy-code');
+const btnLoadCode = document.getElementById('btn-load-code');
 const editorMeta = document.getElementById('editor-meta');
 const editorWorkspace = document.getElementById('editor-workspace');
 const editorExport = document.getElementById('editor-export');
@@ -320,6 +322,81 @@ function collectItems() {
   return items;
 }
 
+// ---- 关卡 Code 编解码（紧凑分享格式）----
+const CODE_VER = 'v1';
+const COORDS = 'abcdefghijklmnopqrstuvwxyz'; // a=0 ... z=25
+const TYPE_TO_CODE = {
+  [TYPES.BEANS]: 'b',
+  [TYPES.CUP]: 'c',
+  [TYPES.COFFEE]: 'C',
+  [TYPES.TAG_BEANS]: '1',
+  [TYPES.TAG_CUP]: '2',
+  [TYPES.TAG_COFFEE]: '3',
+  [TYPES.TAG_TAG]: '4',
+  [TAG_REQUIRE]: 't', // 检查门 require 通配
+};
+const CODE_TO_TYPE = {};
+for (const [k, v] of Object.entries(TYPE_TO_CODE)) CODE_TO_TYPE[v] = k;
+const coord = n => COORDS[n] ?? '?';
+const uncoord = ch => COORDS.indexOf(ch);
+
+/**
+ * 把当前关卡编码为紧凑字符串：
+ *   v1|{cols}x{rows}|{grid}|{items}|{player}|{gates}
+ *  - grid：地形逐格拼接（每格一个字符 W/F/P/D/G）
+ *  - items：每 3 字符一个物品（类型码 + 坐标字符 + 坐标字符）
+ *  - player：3 字符（坐标x + 坐标y + 起手码，空手为 '.'）
+ *  - gates：每 3 字符一个（坐标 + require 码）
+ */
+function encodeCode() {
+  const level = buildLevelObject();
+  if (!level) return null;
+  const gridStr = level.grid.map(r => r.join('')).join('');
+  const itemsStr = level.items.map(it => TYPE_TO_CODE[it.type] + coord(it.x) + coord(it.y)).join('');
+  const playerStr = coord(level.player.x) + coord(level.player.y)
+    + (level.player.hand ? TYPE_TO_CODE[level.player.hand] : '.');
+  const gatesStr = (level.gates || []).map(g => coord(g.x) + coord(g.y) + TYPE_TO_CODE[g.require]).join('');
+  return `${CODE_VER}|${level.cols}x${level.rows}|${gridStr}|${itemsStr}|${playerStr}|${gatesStr}`;
+}
+
+/** 解析关卡 Code，返回关卡对象；格式错误抛异常 */
+function decodeCode(code) {
+  const parts = code.split('|');
+  if (parts.length < 5) throw new Error('格式不完整');
+  const [ver, size, gridStr, itemsStr, playerStr, gatesStr = ''] = parts;
+  if (ver !== CODE_VER) throw new Error('版本不支持');
+
+  const m = /^(\d+)x(\d+)$/.exec(size);
+  if (!m) throw new Error('尺寸格式错误');
+  const cols = +m[1], rows = +m[2];
+  if (cols < 4 || cols > 12 || rows < 4 || rows > 12) throw new Error(`尺寸 ${cols}×${rows} 超出 4~12`);
+  if (gridStr.length !== cols * rows) throw new Error('网格数据长度不符');
+
+  const grid = [];
+  for (let y = 0; y < rows; y++) grid.push(gridStr.slice(y * cols, (y + 1) * cols).split(''));
+
+  const items = [];
+  for (let i = 0; i + 3 <= itemsStr.length; i += 3) {
+    const type = CODE_TO_TYPE[itemsStr[i]];
+    const x = uncoord(itemsStr[i + 1]), y = uncoord(itemsStr[i + 2]);
+    if (!type || x < 0 || y < 0) throw new Error('物品数据错误');
+    items.push({ type, x, y });
+  }
+
+  const px = uncoord(playerStr[0]), py = uncoord(playerStr[1]);
+  if (px < 0 || py < 0) throw new Error('玩家数据错误');
+  const hand = playerStr[2] === '.' ? null : CODE_TO_TYPE[playerStr[2]] || null;
+
+  const gates = [];
+  for (let i = 0; i + 3 <= gatesStr.length; i += 3) {
+    const gx = uncoord(gatesStr[i]), gy = uncoord(gatesStr[i + 1]);
+    const req = CODE_TO_TYPE[gatesStr[i + 2]];
+    gates.push({ x: gx, y: gy, require: req });
+  }
+
+  return { id: 'shared', name: '分享关卡', hanaLine: '', cols, rows, grid, player: { x: px, y: py, hand }, items, gates };
+}
+
 /** 由编辑器状态组装关卡对象（深拷贝 grid）；无起点返回 null */
 function buildLevelObject() {
   if (!editor.playerStart) return null;
@@ -380,24 +457,13 @@ function renderWarnings(list) {
   }
 }
 
-function loadLevel(text) {
-  let level;
-  try {
-    level = JSON.parse(text);
-  } catch {
-    alert('❌ JSON 解析失败，请检查格式');
-    return;
-  }
-
-  if (!level || !Array.isArray(level.grid) || !level.grid.length || !Array.isArray(level.grid[0])) {
-    alert('❌ 缺少 grid 字段');
-    return;
-  }
+/** 把关卡对象填充进编辑器（loadLevel / 导入 Code 共用） */
+function applyLevel(level) {
   const rows = level.grid.length;
   const cols = level.grid[0].length;
   if (cols < 4 || cols > 12 || rows < 4 || rows > 12) {
     alert(`❌ 尺寸 ${cols}×${rows} 超出 4~12 范围`);
-    return;
+    return false;
   }
 
   editor.cols = cols;
@@ -439,7 +505,63 @@ function loadLevel(text) {
   warningsEl.textContent = '';
 
   renderCanvas();
+  return true;
+}
+
+function loadLevel(text) {
+  let level;
+  try {
+    level = JSON.parse(text);
+  } catch {
+    alert('❌ JSON 解析失败，请检查格式');
+    return;
+  }
+  if (!level || !Array.isArray(level.grid) || !level.grid.length || !Array.isArray(level.grid[0])) {
+    alert('❌ 缺少 grid 字段');
+    return;
+  }
+  applyLevel(level);
   flashBtn(btnLoad, '✅ 已加载');
+}
+
+/** 复制当前关卡为紧凑 Code */
+function copyCode() {
+  const code = encodeCode();
+  if (!code) {
+    alert('❌ 请先设置玩家起点，才能生成 Code');
+    return;
+  }
+  copyText(code, btnCopyCode, '✅ 已复制 Code');
+}
+
+/** 从剪贴板导入关卡 Code */
+async function importCode() {
+  let text = '';
+  try {
+    text = await navigator.clipboard.readText();
+  } catch {
+    text = prompt('请粘贴关卡 Code：');
+  }
+  if (!text) return;
+  try {
+    const level = decodeCode(text.trim());
+    if (!applyLevel(level)) return;
+    flashBtn(btnLoadCode, '✅ 已导入');
+  } catch (err) {
+    alert('❌ Code 无效：' + err.message);
+  }
+}
+
+function copyText(text, btn, msg) {
+  try {
+    navigator.clipboard.writeText(text).then(() => flashBtn(btn, msg));
+  } catch {
+    output.value = text;
+    output.select();
+    document.execCommand('copy');
+    output.setSelectionRange(0, 0);
+    flashBtn(btn, msg);
+  }
 }
 
 // ---- 试玩模式（自己画自己玩）----
@@ -584,6 +706,8 @@ function bindEvents() {
   btnExport.addEventListener('click', exportLevel);
   btnCopy.addEventListener('click', copyOutput);
   btnLoad.addEventListener('click', () => loadLevel(output.value));
+  btnCopyCode.addEventListener('click', copyCode);
+  btnLoadCode.addEventListener('click', importCode);
   btnClear.addEventListener('click', () => {
     resetEditor();
     renderCanvas();
