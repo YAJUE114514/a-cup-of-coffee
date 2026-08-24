@@ -365,6 +365,7 @@ function encodeCode() {
       const item = itemsMap.get(`${x},${y}`);
       const gate = gatesMap.get(`${x},${y}`);
       if (t === 'P' && item) gridStr += 'P' + TYPE_TO_CODE[item];
+      else if (t === 'P') gridStr += 'P.'; // 空压力板，避免与「P+物品」歧义
       else if (t === 'G' && gate) gridStr += 'G' + TYPE_TO_CODE[gate];
       else if (t === 'F' && item) gridStr += TYPE_TO_CODE[item];
       else gridStr += t;
@@ -396,15 +397,17 @@ function decodeCode(code) {
     if (idx >= cols * rows) throw new Error('网格数据过长');
     const x = idx % cols, y = Math.floor(idx / cols);
     const ch = gridStr[i];
-    if (ch === 'P') { // 压力板（可带物品，双字符）
+    if (ch === 'P') { // 压力板：P<物品> 带物品，P. 空压力板
       const nx = gridStr[i + 1];
       if (ITEM_SINGLE.includes(nx)) {
         flat.push('P');
         items.push({ type: CODE_TO_TYPE[nx], x, y });
         i += 2;
-      } else {
+      } else if (nx === '.') {
         flat.push('P');
-        i++;
+        i += 2;
+      } else {
+        throw new Error('压力板字符格式错误');
       }
     } else if (ch === 'G') { // 检查门（带要求物品，双字符）
       const nx = gridStr[i + 1];
