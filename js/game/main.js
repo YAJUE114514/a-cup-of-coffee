@@ -61,7 +61,6 @@ const handEl = document.getElementById('hand');
 const winOverlayEl = document.getElementById('win-overlay');
 const winTextEl = document.getElementById('win-text');
 const nextBtn = document.getElementById('next-btn');
-const resetBtn = document.getElementById('reset-btn');
 const menuBtn = document.getElementById('menu-btn');
 const levelListEl = document.getElementById('level-list');
 const hanaTipEl = document.getElementById('hana-tip');
@@ -205,7 +204,6 @@ function goToTitle() {
 btnStart.addEventListener('click', () => showScreen('levels'));
 btnBackTitle.addEventListener('click', () => showScreen('title'));
 btnBegin.addEventListener('click', startGame);
-resetBtn.addEventListener('click', resetLevel);
 menuBtn.addEventListener('click', goToTitle);
 
 nextBtn.addEventListener('click', nextLevel);

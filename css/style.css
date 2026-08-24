@@ -207,10 +207,20 @@ button:active { transform: scale(0.97); }
   max-width: 480px;
 }
 
-.game-controls {
+/* 包裹棋盘，用于右上角 UI 相对定位 */
+#game-wrap {
+  position: relative;
+  display: inline-block;
+}
+/* 右上角 UI：右边缘对齐棋盘右边缘，下边缘浮在棋盘上边缘上方 */
+#top-right-ui {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
   display: flex;
   align-items: center;
   gap: 10px;
+  white-space: nowrap;
 }
 .control-tip {
   color: var(--text-dim);
