@@ -183,6 +183,12 @@ function draw() {
   renderHand(handEl, state);
 }
 
+/** 进入下一关（通关浮层的按钮 / 空格 / 回车） */
+function nextLevel() {
+  levelIndex = (levelIndex + 1) % LEVELS.length;
+  enterIntro();
+}
+
 /** 返回主菜单：清理所有运行状态与定时器 */
 function goToTitle() {
   clearTimeout(introTimer);
@@ -202,10 +208,7 @@ btnBegin.addEventListener('click', startGame);
 resetBtn.addEventListener('click', resetLevel);
 menuBtn.addEventListener('click', goToTitle);
 
-nextBtn.addEventListener('click', () => {
-  levelIndex = (levelIndex + 1) % LEVELS.length;
-  enterIntro();
-});
+nextBtn.addEventListener('click', nextLevel);
 
 window.addEventListener('keydown', (e) => {
   const inIntro = document.getElementById('screen-intro').classList.contains('active');
@@ -221,7 +224,14 @@ window.addEventListener('keydown', (e) => {
   }
 
   if (inGame) {
-    if (state && state.win) return; // 过关浮层出现时锁操作
+    if (state && state.win) {
+      // 过关浮层：空格 / 回车直接进入下一关
+      if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        nextLevel();
+      }
+      return;
+    }
 
     const key = e.key;
     const move = KEY_MAP[key] || KEY_MAP[key.toLowerCase()];
