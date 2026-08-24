@@ -212,11 +212,11 @@ button:active { transform: scale(0.97); }
   position: relative;
   display: inline-block;
 }
-/* 右上角 UI：右边缘对齐棋盘右边缘，下边缘浮在棋盘上边缘上方 */
+/* 右上角 UI：右边缘对齐棋盘右边缘，与手持 HUD 同高度 */
 #top-right-ui {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 8px);
+  top: 0;
   display: flex;
   align-items: center;
   gap: 10px;
