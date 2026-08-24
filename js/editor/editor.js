@@ -573,13 +573,31 @@ function loadLevel(text) {
   flashBtn(btnLoad, '✅ 已加载');
 }
 
-/** 复制当前关卡为紧凑 Code */
+/** 自动识别文本框内容：关卡 Code 或 JSON，统一走「加载」接口 */
+function loadFromText(text) {
+  const t = text.trim();
+  if (!t) return;
+  if (t.startsWith(CODE_VER + '|')) {
+    try {
+      const level = decodeCode(t);
+      if (!applyLevel(level)) return;
+      flashBtn(btnLoad, '✅ 已加载');
+    } catch (err) {
+      alert('❌ Code 无效：' + err.message);
+    }
+  } else {
+    loadLevel(t);
+  }
+}
+
+/** 复制当前关卡为紧凑 Code（同时显示到文本框，与 JSON 导出一致） */
 function copyCode() {
   const code = encodeCode();
   if (!code) {
     alert('❌ 请先设置玩家起点，才能生成 Code');
     return;
   }
+  output.value = code;
   copyText(code, btnCopyCode, '✅ 已复制 Code');
 }
 
@@ -754,7 +772,7 @@ function bindEvents() {
 
   btnExport.addEventListener('click', exportLevel);
   btnCopy.addEventListener('click', copyOutput);
-  btnLoad.addEventListener('click', () => loadLevel(output.value));
+  btnLoad.addEventListener('click', () => loadFromText(output.value));
   btnCopyCode.addEventListener('click', copyCode);
   btnLoadCode.addEventListener('click', importCode);
   btnClear.addEventListener('click', () => {
