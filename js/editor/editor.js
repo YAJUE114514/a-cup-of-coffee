@@ -322,8 +322,8 @@ function collectItems() {
   return items;
 }
 
-// ---- 关卡 Code 编解码（紧凑分享格式）----
-const CODE_VER = 'v1';
+// ---- 关卡 Code 编解码（紧凑分享格式 v2）----
+const CODE_VER = 'v2';
 const COORDS = 'abcdefghijklmnopqrstuvwxyz'; // a=0 ... z=25
 const TYPE_TO_CODE = {
   [TYPES.BEANS]: 'b',
@@ -340,59 +340,105 @@ for (const [k, v] of Object.entries(TYPE_TO_CODE)) CODE_TO_TYPE[v] = k;
 const coord = n => COORDS[n] ?? '?';
 const uncoord = ch => COORDS.indexOf(ch);
 
+// v2 网格字符分类：
+//   地形单字符：W 墙 / F 地板 / D 机关门（P、G 有双字符组合，单独处理）
+//   物品单字符：b 豆 / c 杯 / C 咖啡 / 1~4 tag（表示「地板 + 物品」）
+//   双字符组合：P<字母> = 压力板+物品；G<字母> = 检查门 + 要求物品
+const TERRAIN_SINGLE = 'WFD';
+const ITEM_SINGLE = 'bcC1234';
+
 /**
  * 把当前关卡编码为紧凑字符串：
- *   v1|{cols}x{rows}|{grid}|{items}|{player}|{gates}
- *  - grid：地形逐格拼接（每格一个字符 W/F/P/D/G）
- *  - items：每 3 字符一个物品（类型码 + 坐标字符 + 坐标字符）
+ *   v2|{cols}x{rows}|{grid}|{player}
+ *  - grid：每格一字符，物品/检查门直接合并进网格（P<物品>、G<要求>）
  *  - player：3 字符（坐标x + 坐标y + 起手码，空手为 '.'）
- *  - gates：每 3 字符一个（坐标 + require 码）
  */
 function encodeCode() {
   const level = buildLevelObject();
   if (!level) return null;
-  const gridStr = level.grid.map(r => r.join('')).join('');
-  const itemsStr = level.items.map(it => TYPE_TO_CODE[it.type] + coord(it.x) + coord(it.y)).join('');
+  const itemsMap = new Map(level.items.map(it => [`${it.x},${it.y}`, it.type]));
+  const gatesMap = new Map((level.gates || []).map(g => [`${g.x},${g.y}`, g.require]));
+  let gridStr = '';
+  for (let y = 0; y < level.rows; y++) {
+    for (let x = 0; x < level.cols; x++) {
+      const t = level.grid[y][x];
+      const item = itemsMap.get(`${x},${y}`);
+      const gate = gatesMap.get(`${x},${y}`);
+      if (t === 'P' && item) gridStr += 'P' + TYPE_TO_CODE[item];
+      else if (t === 'G' && gate) gridStr += 'G' + TYPE_TO_CODE[gate];
+      else if (t === 'F' && item) gridStr += TYPE_TO_CODE[item];
+      else gridStr += t;
+    }
+  }
   const playerStr = coord(level.player.x) + coord(level.player.y)
     + (level.player.hand ? TYPE_TO_CODE[level.player.hand] : '.');
-  const gatesStr = (level.gates || []).map(g => coord(g.x) + coord(g.y) + TYPE_TO_CODE[g.require]).join('');
-  return `${CODE_VER}|${level.cols}x${level.rows}|${gridStr}|${itemsStr}|${playerStr}|${gatesStr}`;
+  return `${CODE_VER}|${level.cols}x${level.rows}|${gridStr}|${playerStr}`;
 }
 
 /** 解析关卡 Code，返回关卡对象；格式错误抛异常 */
 function decodeCode(code) {
   const parts = code.split('|');
-  if (parts.length < 5) throw new Error('格式不完整');
-  const [ver, size, gridStr, itemsStr, playerStr, gatesStr = ''] = parts;
+  if (parts.length < 4) throw new Error('格式不完整');
+  const [ver, size, gridStr, playerStr] = parts;
   if (ver !== CODE_VER) throw new Error('版本不支持');
 
   const m = /^(\d+)x(\d+)$/.exec(size);
   if (!m) throw new Error('尺寸格式错误');
   const cols = +m[1], rows = +m[2];
   if (cols < 4 || cols > 12 || rows < 4 || rows > 12) throw new Error(`尺寸 ${cols}×${rows} 超出 4~12`);
-  if (gridStr.length !== cols * rows) throw new Error('网格数据长度不符');
+
+  // 解析合并网格：地形 + 物品 + 检查门
+  const flat = [];
+  const items = [];
+  const gates = [];
+  let i = 0, idx = 0;
+  while (i < gridStr.length) {
+    if (idx >= cols * rows) throw new Error('网格数据过长');
+    const x = idx % cols, y = Math.floor(idx / cols);
+    const ch = gridStr[i];
+    if (ch === 'P') { // 压力板（可带物品，双字符）
+      const nx = gridStr[i + 1];
+      if (ITEM_SINGLE.includes(nx)) {
+        flat.push('P');
+        items.push({ type: CODE_TO_TYPE[nx], x, y });
+        i += 2;
+      } else {
+        flat.push('P');
+        i++;
+      }
+    } else if (ch === 'G') { // 检查门（带要求物品，双字符）
+      const nx = gridStr[i + 1];
+      if (ITEM_SINGLE.includes(nx) || nx === 't') {
+        flat.push('G');
+        gates.push({ x, y, require: CODE_TO_TYPE[nx] });
+        i += 2;
+      } else {
+        flat.push('G');
+        gates.push({ x, y, require: TYPES.BEANS });
+        i++;
+      }
+    } else if (TERRAIN_SINGLE.includes(ch)) {
+      flat.push(ch);
+      i++;
+    } else if (ITEM_SINGLE.includes(ch)) {
+      flat.push('F');
+      items.push({ type: CODE_TO_TYPE[ch], x, y });
+      i++;
+    } else {
+      throw new Error('未知字符: ' + ch);
+    }
+    idx++;
+  }
+  if (idx !== cols * rows) throw new Error('网格长度不符');
 
   const grid = [];
-  for (let y = 0; y < rows; y++) grid.push(gridStr.slice(y * cols, (y + 1) * cols).split(''));
+  for (let y = 0; y < rows; y++) grid.push(flat.slice(y * cols, (y + 1) * cols));
 
-  const items = [];
-  for (let i = 0; i + 3 <= itemsStr.length; i += 3) {
-    const type = CODE_TO_TYPE[itemsStr[i]];
-    const x = uncoord(itemsStr[i + 1]), y = uncoord(itemsStr[i + 2]);
-    if (!type || x < 0 || y < 0) throw new Error('物品数据错误');
-    items.push({ type, x, y });
-  }
-
+  // 玩家
+  if (playerStr.length !== 3) throw new Error('玩家数据错误');
   const px = uncoord(playerStr[0]), py = uncoord(playerStr[1]);
-  if (px < 0 || py < 0) throw new Error('玩家数据错误');
+  if (px < 0 || py < 0) throw new Error('玩家坐标错误');
   const hand = playerStr[2] === '.' ? null : CODE_TO_TYPE[playerStr[2]] || null;
-
-  const gates = [];
-  for (let i = 0; i + 3 <= gatesStr.length; i += 3) {
-    const gx = uncoord(gatesStr[i]), gy = uncoord(gatesStr[i + 1]);
-    const req = CODE_TO_TYPE[gatesStr[i + 2]];
-    gates.push({ x: gx, y: gy, require: req });
-  }
 
   return { id: 'shared', name: '分享关卡', hanaLine: '', cols, rows, grid, player: { x: px, y: py, hand }, items, gates };
 }

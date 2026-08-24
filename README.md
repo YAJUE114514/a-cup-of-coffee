@@ -22,10 +22,10 @@
 - **📋 复制 Code**：画好关卡后点击，生成 Code 并复制到剪贴板，发给朋友即可
 - **📥 导入 Code**：把收到的 Code 粘贴进来，自动载入关卡，可继续编辑或直接试玩
 
-Code 以 `v1|` 开头，例如：
+Code 以 `v2|` 开头，物品和检查门直接合并进网格字符，例如：
 
 ```
-v1|6x4|FFFFFFFFFFFFFFFFFFFFFFFF|bbbceb|aa.
+v2|6x4|FFWGtFFFbDFcFPP2WWWFFFGcF43|aa1
 ```
 
 拿到 Code 的玩家：打开 `editor.html` → 点「📥 导入 Code」→ 再点「▶ 测试」就能玩到别人做的关卡。
