@@ -22,6 +22,8 @@ let tipTimer = null;     // hana 台词自动消失定时器
 let noInputTimer = null;         // 第一关「无输入提示」定时器
 let tutorialHint = null;         // 当前教程提示类型：null | 'move' | 'combine'
 let tutorialCombineShown = false;
+let history = [];                // 撤销栈（状态快照，Z 键撤销）
+const HISTORY_LIMIT = 100;
 
 const INTRO_AUTO_MS = 2500; // 过渡界面停留时间
 
@@ -60,6 +62,7 @@ const winOverlayEl = document.getElementById('win-overlay');
 const winTextEl = document.getElementById('win-text');
 const nextBtn = document.getElementById('next-btn');
 const resetBtn = document.getElementById('reset-btn');
+const menuBtn = document.getElementById('menu-btn');
 const levelListEl = document.getElementById('level-list');
 const hanaTipEl = document.getElementById('hana-tip');
 const btnStart = document.getElementById('btn-start');
@@ -108,9 +111,23 @@ function enterIntro() {
 function startGame() {
   clearTimeout(introTimer);
   state = createGameState(LEVELS[levelIndex]);
+  history = []; // 新关卡清空撤销历史
   showScreen('game');
   draw();
   setupTutorial();
+}
+
+// ---- 撤销（Z 键）----
+function cloneState(s) { return JSON.parse(JSON.stringify(s)); }
+function trimHistory() { if (history.length > HISTORY_LIMIT) history.shift(); }
+function pushHistory() {
+  history.push(cloneState(state));
+  trimHistory();
+}
+function undo() {
+  if (history.length === 0) return;
+  state = history.pop();
+  draw();
 }
 
 /**
@@ -166,11 +183,24 @@ function draw() {
   renderHand(handEl, state);
 }
 
+/** 返回主菜单：清理所有运行状态与定时器 */
+function goToTitle() {
+  clearTimeout(introTimer);
+  clearTimeout(noInputTimer);
+  clearTimeout(tipTimer);
+  state = null;
+  history = [];
+  hanaTipEl.classList.add('hidden');
+  winOverlayEl.classList.add('hidden');
+  showScreen('title');
+}
+
 // ---- 事件 ----
 btnStart.addEventListener('click', () => showScreen('levels'));
 btnBackTitle.addEventListener('click', () => showScreen('title'));
 btnBegin.addEventListener('click', startGame);
 resetBtn.addEventListener('click', resetLevel);
+menuBtn.addEventListener('click', goToTitle);
 
 nextBtn.addEventListener('click', () => {
   levelIndex = (levelIndex + 1) % LEVELS.length;
@@ -198,6 +228,7 @@ window.addEventListener('keydown', (e) => {
 
     if (move) {
       e.preventDefault();
+      const snapshot = cloneState(state); // 撤销用：记录操作前状态
       // 玩家开始移动：取消「无输入」定时器，隐藏移动教程提示
       clearTimeout(noInputTimer);
       hideTutorialTip('move');
@@ -205,6 +236,10 @@ window.addEventListener('keydown', (e) => {
       if (move[0] < 0) state.player.facing = 'left';
       else if (move[0] > 0) state.player.facing = 'right';
       const result = step(state, move[0], move[1]);
+      if (result.action !== 'blocked') { // 只有真正移动了才可撤销
+        history.push(snapshot);
+        trimHistory();
+      }
       draw();
 
       // 第一关教程：第一次捡起物品 → 提示组合
@@ -224,8 +259,18 @@ window.addEventListener('keydown', (e) => {
     }
 
     if (key === 'f' || key === 'F') {
-      drop(state); // 放下手持物品到脚下
+      const snapshot = cloneState(state);
+      const result = drop(state); // 放下手持物品到脚下
+      if (result.action === 'drop') {
+        history.push(snapshot);
+        trimHistory();
+      }
       draw();
+      return;
+    }
+
+    if (key === 'z' || key === 'Z') {
+      undo(); // 撤销一步
       return;
     }
 

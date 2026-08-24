@@ -444,6 +444,7 @@ function loadLevel(text) {
 
 // ---- 试玩模式（自己画自己玩）----
 let testState = null;
+let testHistory = []; // 试玩撤销栈
 
 const TEST_KEYS = {
   ArrowUp: [0, -1],
@@ -463,6 +464,7 @@ function enterTest() {
     return;
   }
   testState = createGameState(level);
+  testHistory = [];
   editorMeta.classList.add('hidden');
   editorWorkspace.classList.add('hidden');
   editorExport.classList.add('hidden');
@@ -494,6 +496,7 @@ function resetTest() {
   const level = buildLevelObject();
   if (level) {
     testState = createGameState(level);
+    testHistory = [];
     testHana.classList.add('hidden');
     renderTest();
   }
@@ -508,14 +511,30 @@ function handleTestKey(e) {
   const key = e.key;
   if (key === 'Escape') { e.preventDefault(); exitTest(); return; }
   if (key === 'r' || key === 'R') { resetTest(); return; }
-  if (key === 'f' || key === 'F') { drop(testState); renderTest(); return; }
+  if (key === 'z' || key === 'Z') { // 撤销一步
+    if (testHistory.length) {
+      testState = testHistory.pop();
+      testHana.classList.add('hidden');
+      renderTest();
+    }
+    return;
+  }
+  if (key === 'f' || key === 'F') {
+    const snap = JSON.parse(JSON.stringify(testState));
+    const r = drop(testState);
+    if (r.action === 'drop') { testHistory.push(snap); if (testHistory.length > 100) testHistory.shift(); }
+    renderTest();
+    return;
+  }
 
   const move = TEST_KEYS[key] || TEST_KEYS[key.toLowerCase()];
   if (move) {
     e.preventDefault();
+    const snap = JSON.parse(JSON.stringify(testState));
     if (move[0] < 0) testState.player.facing = 'left';
     else if (move[0] > 0) testState.player.facing = 'right';
-    step(testState, move[0], move[1]);
+    const r = step(testState, move[0], move[1]);
+    if (r.action !== 'blocked') { testHistory.push(snap); if (testHistory.length > 100) testHistory.shift(); }
     if (checkWin(testState)) testState.win = true;
     renderTest();
   }
