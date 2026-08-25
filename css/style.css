@@ -21,6 +21,9 @@ body {
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
+  /* 触屏优化：防止双击缩放 / 长按误选 */
+  touch-action: manipulation;
+  overscroll-behavior: none;
 }
 
 #app { min-height: 100vh; }
@@ -135,6 +138,17 @@ button:active { transform: scale(0.97); }
   flex-shrink: 0;
 }
 .level-name { font-size: 15px; }
+
+/* 分享关卡卡片的小徽标 */
+.shared-badge {
+  font-size: 11px;
+  color: var(--accent);
+  background: rgba(217, 160, 91, 0.18);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: 6px;
+  vertical-align: 1px;
+}
 
 /* ---- 关卡过渡界面 ---- */
 .intro-card {
@@ -394,6 +408,108 @@ button:active { transform: scale(0.97); }
 #win-overlay p {
   font-size: 24px;
   margin: 0;
+}
+
+/* ---- 分享弹窗 ---- */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  padding: 20px;
+}
+.modal-card {
+  background: #3a2b1e;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  padding: 28px 24px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal-card h3 { margin: 0; font-size: 20px; }
+.modal-sub { margin: 0; color: var(--text-dim); font-size: 13px; }
+
+#share-input {
+  width: 100%;
+  min-height: 84px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+#share-input:focus { outline: none; border-color: var(--accent); }
+
+.share-error { margin: 0; color: #ff9c9c; font-size: 13px; }
+.modal-btns { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* ---- 触屏虚拟按键 ---- */
+.touch-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 480px;
+  margin-top: auto;
+  padding: 0 6px 6px;
+  gap: 16px;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.dpad {
+  display: grid;
+  grid-template-areas:
+    ". up ."
+    "left down right";
+  gap: 6px;
+}
+.t-up   { grid-area: up; }
+.t-left { grid-area: left; }
+.t-down { grid-area: down; }
+.t-right{ grid-area: right; }
+
+.actions {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 6px;
+}
+
+.tbtn {
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  border-radius: 12px;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.tbtn:active {
+  background: rgba(255, 255, 255, 0.22);
+  transform: scale(0.96);
+}
+.actions .tbtn {
+  width: 74px;
+  height: 46px;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .hidden { display: none !important; }

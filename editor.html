@@ -54,11 +54,10 @@
     <section class="export" id="editor-export">
       <div class="export-tools">
         <button id="btn-test" class="tool-btn test-btn">▶ 测试</button>
-        <button id="btn-export">📤 导出 JSON</button>
-        <button id="btn-copy">📋 复制</button>
+        <button id="btn-copy-json">📋 复制 JSON</button>
         <button id="btn-copy-code">📋 复制 Code</button>
+        <button id="btn-share-link">🔗 分享链接</button>
         <button id="btn-load">📥 加载关卡</button>
-        <button id="btn-load-code">📥 导入 Code</button>
         <button id="btn-clear">🗑 清空</button>
       </div>
       <div id="warnings" class="warnings"></div>
@@ -76,6 +75,20 @@
         <button id="test-exit" class="ghost-btn">← 返回编辑</button>
         <button id="test-reset" class="ghost-btn">↺ 重置</button>
         <span class="control-tip">方向键/WASD 移动 · F 放下 · R 重置 · Esc 返回</span>
+      </div>
+      <!-- 试玩触屏按键（触屏设备显示） -->
+      <div id="test-touch" class="touch-controls hidden">
+        <div class="dpad">
+          <button class="tbtn t-up"    data-dx="0"  data-dy="-1" aria-label="上">↑</button>
+          <button class="tbtn t-left"  data-dx="-1" data-dy="0"  aria-label="左">←</button>
+          <button class="tbtn t-down"  data-dx="0"  data-dy="1"  aria-label="下">↓</button>
+          <button class="tbtn t-right" data-dx="1"  data-dy="0"  aria-label="右">→</button>
+        </div>
+        <div class="actions">
+          <button class="tbtn t-drop"  data-action="drop"  aria-label="放下">放下</button>
+          <button class="tbtn t-undo"  data-action="undo"  aria-label="撤销">撤销</button>
+          <button class="tbtn t-reset" data-action="reset" aria-label="重置">重置</button>
+        </div>
       </div>
       <p id="test-hana" class="hana-tip hidden"></p>
     </section>

@@ -4,15 +4,22 @@
  *
  * 操作方式：
  *   - 方向键 / WASD  逐格移动
- *   - R             重置当前关（直接重开）
+ *   - 点击棋盘格子    BFS 自动寻路（途中物品视为障碍，不误拾取）
+ *   - R 重置 / Z 撤销 / F 放下
+ *   - 触屏设备：底部虚拟按键（方向键 + 放下/撤销/重置）
  *   - 过渡界面：数秒后自动开始；方向键 / 空格 / 回车立即开始
- *   - 同关重置超过 3 次后，有概率在底部刷新出 hana 的一句话
+ *
+ * 分享：
+ *   - URL 参数 ?play=<Code>&name=&line= 打开即玩
+ *   - 标题界面「📥 游玩分享关卡」：粘贴 Code 或完整链接
  */
 
 import { LEVELS } from '../data/levels.js';
+import { decodeLevel } from '../data/codec.js';
 import { createGameState } from './state.js';
-import { step, checkWin, drop } from './judge.js';
+import { step, checkWin, drop, findPath } from './judge.js';
 import { renderBoard, renderHand } from './renderer.js';
+import { initTouchControls } from './touch.js';
 
 let state = null;
 let levelIndex = 0;
@@ -25,7 +32,11 @@ let tutorialCombineShown = false;
 let history = [];                // 撤销栈（状态快照，Z 键撤销）
 const HISTORY_LIMIT = 100;
 
+let autoTimer = null;    // 点击寻路自动移动定时器
+let autoSteps = [];      // 剩余步进队列
+
 const INTRO_AUTO_MS = 2500; // 过渡界面停留时间
+const AUTO_MOVE_MS = 130;   // 自动移动每步间隔
 
 const KEY_MAP = {
   ArrowUp:    [0, -1],
@@ -67,6 +78,15 @@ const hanaTipEl = document.getElementById('hana-tip');
 const btnStart = document.getElementById('btn-start');
 const btnBackTitle = document.getElementById('btn-back-title');
 const btnBegin = document.getElementById('btn-begin');
+const controlTipEl = document.querySelector('.control-tip');
+
+// ---- 分享弹窗 ----
+const btnSharePlay = document.getElementById('btn-share-play');
+const shareModal = document.getElementById('share-modal');
+const shareInput = document.getElementById('share-input');
+const shareError = document.getElementById('share-error');
+const btnShareOk = document.getElementById('btn-share-ok');
+const btnShareCancel = document.getElementById('btn-share-cancel');
 
 // ---- 屏幕切换 ----
 function showScreen(name) {
@@ -80,7 +100,8 @@ function renderLevelList() {
   LEVELS.forEach((lv, i) => {
     const card = document.createElement('button');
     card.className = 'level-card';
-    card.innerHTML = `<span class="level-num">${i + 1}</span><span class="level-name">${lv.name}</span>`;
+    const badge = lv.id === 'shared' ? ' <span class="shared-badge">分享</span>' : '';
+    card.innerHTML = `<span class="level-num">${i + 1}</span><span class="level-name">${lv.name}${badge}</span>`;
     card.addEventListener('click', () => {
       levelIndex = i;
       enterIntro();
@@ -89,7 +110,7 @@ function renderLevelList() {
   });
 }
 
-/** 进入关卡过渡界面（选关 / 下一关时），数秒后自动开始 */
+/** 进入关卡过渡界面（选关 / 下一关 / 分享关时），数秒后自动开始 */
 function enterIntro() {
   resetCount = 0; // 进入新关，重置计数归零
   const lv = LEVELS[levelIndex];
@@ -109,6 +130,7 @@ function enterIntro() {
 /** 真正开始游玩 */
 function startGame() {
   clearTimeout(introTimer);
+  stopAutoMove();
   state = createGameState(LEVELS[levelIndex]);
   history = []; // 新关卡清空撤销历史
   showScreen('game');
@@ -129,12 +151,93 @@ function undo() {
   draw();
 }
 
-/**
- * 第一关教程：
- *  - 进入后 10 秒无输入 → 提示用方向键移动
- *  - 第一次捡起物品 → 提示组合
- *  - 通关 → 提示「都变成咖啡」
- */
+// ---- 核心操作（键盘 / 虚拟按键 / 自动移动共用）----
+function doMove(dx, dy) {
+  if (!state || state.win) return { action: 'none' };
+  // 玩家开始移动：取消「无输入」定时器，隐藏移动教程提示
+  clearTimeout(noInputTimer);
+  hideTutorialTip('move');
+
+  const snapshot = cloneState(state); // 撤销用：记录操作前状态
+  // 记录朝向（素材朝右，向左走要翻转）
+  if (dx < 0) state.player.facing = 'left';
+  else if (dx > 0) state.player.facing = 'right';
+  const result = step(state, dx, dy);
+  if (result.action !== 'blocked') { // 只有真正移动了才可撤销
+    history.push(snapshot);
+    trimHistory();
+  }
+  draw();
+
+  // 第一关教程：第一次捡起物品 → 提示组合
+  if (isTutorial() && !tutorialCombineShown && result.action === 'pickup') {
+    tutorialCombineShown = true;
+    showTutorialTip('combine', TUTORIAL_COMBINE);
+  } else if (result.action === 'combine') {
+    hideTutorialTip('combine');
+  }
+
+  if (checkWin(state)) {
+    state.win = true;
+    winTextEl.textContent = isTutorial() ? TUTORIAL_WIN : WIN_TEXT_DEFAULT;
+    winOverlayEl.classList.remove('hidden');
+    stopAutoMove();
+  }
+  return result;
+}
+
+function doDrop() {
+  if (!state || state.win) return;
+  stopAutoMove();
+  const snapshot = cloneState(state);
+  const result = drop(state); // 放下手持物品到脚下
+  if (result.action === 'drop') {
+    history.push(snapshot);
+    trimHistory();
+  }
+  draw();
+}
+
+function doUndo() {
+  if (!state || state.win) return;
+  stopAutoMove();
+  undo(); // 撤销一步
+}
+
+function doReset() {
+  if (!state) return;
+  stopAutoMove();
+  resetLevel();
+}
+
+// ---- 点击格子自动寻路 ----
+function stopAutoMove() {
+  clearInterval(autoTimer);
+  autoTimer = null;
+  autoSteps = [];
+}
+
+function startAutoMove(path) {
+  if (autoTimer || !path || !path.length) return;
+  clearTimeout(noInputTimer);
+  hideTutorialTip('move');
+  autoSteps = path.slice();
+  autoTimer = setInterval(autoStep, AUTO_MOVE_MS);
+}
+
+function autoStep() {
+  if (!state || !autoSteps.length) {
+    stopAutoMove();
+    return;
+  }
+  const [dx, dy] = autoSteps.shift();
+  const r = doMove(dx, dy);
+  if (r.action === 'blocked' || state.win) {
+    stopAutoMove();
+  }
+}
+
+// ---- 第一关教程 ----
 function setupTutorial() {
   clearTimeout(noInputTimer);
   tutorialHint = null;
@@ -180,6 +283,16 @@ function resetLevel() {
 function draw() {
   renderBoard(boardEl, state);
   renderHand(handEl, state);
+  fitBoard();
+}
+
+/** 棋盘格子随屏幕宽度缩放（触屏 / 小窗自适应） */
+function fitBoard() {
+  if (!state) return;
+  const gap = 5;
+  const avail = Math.min(window.innerWidth - 24, 760);
+  const size = Math.max(30, Math.min(64, Math.floor((avail - (state.cols - 1) * gap) / state.cols)));
+  boardEl.style.setProperty('--cell-size', size + 'px');
 }
 
 /** 进入下一关（通关浮层的按钮 / 空格 / 回车） */
@@ -190,9 +303,11 @@ function nextLevel() {
 
 /** 返回主菜单：清理所有运行状态与定时器 */
 function goToTitle() {
+  stopAutoMove();
   clearTimeout(introTimer);
   clearTimeout(noInputTimer);
   clearTimeout(tipTimer);
+  closeShareModal();
   state = null;
   history = [];
   hanaTipEl.classList.add('hidden');
@@ -200,15 +315,121 @@ function goToTitle() {
   showScreen('title');
 }
 
+// ---- 分享：游玩分享关卡 ----
+function openShareModal() {
+  shareInput.value = '';
+  shareError.classList.add('hidden');
+  shareModal.classList.remove('hidden');
+  shareInput.focus();
+}
+
+function closeShareModal() {
+  shareModal.classList.add('hidden');
+}
+
+/**
+ * 把一份解析出的分享关加入关卡列表并进入过渡界面。
+ * 同一会话内分享关保持单一槽位：再次加载时替换旧分享关。
+ */
+function loadSharedLevel(level) {
+  const idx = LEVELS.findIndex(l => l.id === 'shared');
+  if (idx >= 0) {
+    LEVELS[idx] = level;
+    levelIndex = idx;
+  } else {
+    LEVELS.push(level);
+    levelIndex = LEVELS.length - 1;
+  }
+  renderLevelList(); // 刷新关卡列表，让分享关出现在选择界面
+  enterIntro();
+}
+
+/** 从 Code 或分享链接解析并游玩 */
+function startSharedFromText(text) {
+  const t = text.trim();
+  if (!t) {
+    shareError.textContent = '请粘贴关卡 Code 或分享链接。';
+    shareError.classList.remove('hidden');
+    return;
+  }
+  // 支持直接粘贴完整分享链接
+  let code = t, name = null, line = null;
+  try {
+    const url = new URL(t);
+    const p = url.searchParams.get('play');
+    if (p) {
+      code = p;
+      name = url.searchParams.get('name');
+      line = url.searchParams.get('line');
+    }
+  } catch { /* 不是 URL，当作纯 Code */ }
+
+  try {
+    const level = decodeLevel(code);
+    level.name = name || level.name || '分享关卡';
+    level.hanaLine = line || level.hanaLine || '';
+    loadSharedLevel(level);
+    closeShareModal();
+  } catch (err) {
+    shareError.textContent = '无效的关卡 Code：' + err.message;
+    shareError.classList.remove('hidden');
+  }
+}
+
+/** 初始化时解析 URL 参数 ?play=...，直接进入分享关 */
+function handleUrlShare() {
+  const params = new URLSearchParams(location.search);
+  const play = params.get('play');
+  if (!play) return false;
+  try {
+    const level = decodeLevel(play);
+    level.name = params.get('name') || level.name || '分享关卡';
+    level.hanaLine = params.get('line') || level.hanaLine || '';
+    loadSharedLevel(level);
+    // 清掉地址栏参数，避免刷新时重复添加
+    // 注意：本模块的 history 是撤销栈，清 URL 要用 window.history
+    if (window.history.replaceState) window.history.replaceState(null, '', location.pathname);
+    return true;
+  } catch (err) {
+    console.warn('分享链接解析失败：', err.message);
+    return false;
+  }
+}
+
 // ---- 事件 ----
 btnStart.addEventListener('click', () => showScreen('levels'));
 btnBackTitle.addEventListener('click', () => showScreen('title'));
 btnBegin.addEventListener('click', startGame);
 menuBtn.addEventListener('click', goToTitle);
-
 nextBtn.addEventListener('click', nextLevel);
 
+// 分享弹窗
+btnSharePlay.addEventListener('click', openShareModal);
+btnShareOk.addEventListener('click', () => startSharedFromText(shareInput.value));
+btnShareCancel.addEventListener('click', closeShareModal);
+shareModal.addEventListener('click', (e) => {
+  if (e.target === shareModal) closeShareModal();
+});
+
+// 点击棋盘：自动寻路到目标格（途中物品视为障碍，不误拾取）
+boardEl.addEventListener('click', (e) => {
+  if (!state || state.win) return;
+  const cell = e.target.closest('.cell');
+  if (!cell) return;
+  const x = +cell.dataset.x, y = +cell.dataset.y;
+  if (x === state.player.x && y === state.player.y) return;
+  const path = findPath(state, x, y);
+  if (path && path.length) startAutoMove(path);
+});
+
 window.addEventListener('keydown', (e) => {
+  // 分享弹窗打开时：Esc 关闭，Enter 开始
+  if (!shareModal.classList.contains('hidden')) {
+    if (e.key === 'Escape') { closeShareModal(); return; }
+    if (e.key === 'Enter') { startSharedFromText(shareInput.value); return; }
+    return;
+  }
+
   const inIntro = document.getElementById('screen-intro').classList.contains('active');
   const inGame = document.getElementById('screen-game').classList.contains('active');
 
@@ -236,58 +457,33 @@ window.addEventListener('keydown', (e) => {
 
     if (move) {
       e.preventDefault();
-      const snapshot = cloneState(state); // 撤销用：记录操作前状态
-      // 玩家开始移动：取消「无输入」定时器，隐藏移动教程提示
-      clearTimeout(noInputTimer);
-      hideTutorialTip('move');
-      // 记录朝向（素材朝右，向左走要翻转）
-      if (move[0] < 0) state.player.facing = 'left';
-      else if (move[0] > 0) state.player.facing = 'right';
-      const result = step(state, move[0], move[1]);
-      if (result.action !== 'blocked') { // 只有真正移动了才可撤销
-        history.push(snapshot);
-        trimHistory();
-      }
-      draw();
-
-      // 第一关教程：第一次捡起物品 → 提示组合
-      if (isTutorial() && !tutorialCombineShown && result.action === 'pickup') {
-        tutorialCombineShown = true;
-        showTutorialTip('combine', TUTORIAL_COMBINE);
-      } else if (result.action === 'combine') {
-        hideTutorialTip('combine');
-      }
-
-      if (checkWin(state)) {
-        state.win = true;
-        winTextEl.textContent = isTutorial() ? TUTORIAL_WIN : WIN_TEXT_DEFAULT;
-        winOverlayEl.classList.remove('hidden');
-      }
+      doMove(move[0], move[1]);
       return;
     }
-
-    if (key === 'f' || key === 'F') {
-      const snapshot = cloneState(state);
-      const result = drop(state); // 放下手持物品到脚下
-      if (result.action === 'drop') {
-        history.push(snapshot);
-        trimHistory();
-      }
-      draw();
-      return;
-    }
-
-    if (key === 'z' || key === 'Z') {
-      undo(); // 撤销一步
-      return;
-    }
-
-    if (key === 'r' || key === 'R') {
-      resetLevel();
-    }
+    if (key === 'f' || key === 'F') { doDrop(); return; }
+    if (key === 'z' || key === 'Z') { doUndo(); return; }
+    if (key === 'r' || key === 'R') { doReset(); }
   }
 });
 
+window.addEventListener('resize', () => {
+  if (state) fitBoard();
+});
+window.addEventListener('orientationchange', () => {
+  if (state) setTimeout(fitBoard, 60);
+});
+
+// ---- 触屏虚拟按键 ----
+const touch = initTouchControls(document.getElementById('touch-controls'), {
+  move: (dx, dy) => { doMove(dx, dy); },
+  drop: doDrop,
+  undo: doUndo,
+  reset: doReset,
+});
+if (touch.active) {
+  controlTipEl.textContent = '点击格子自动寻路 · 触屏按键操作';
+}
+
 // ---- 初始化 ----
 renderLevelList();
-showScreen('title');
+if (!handleUrlShare()) showScreen('title');

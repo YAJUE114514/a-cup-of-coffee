@@ -134,3 +134,67 @@ export function checkWin(state) {
     && state.items.length > 0
     && state.items.every(i => i.type === TYPES.COFFEE);
 }
+
+/**
+ * 寻路：BFS 找从玩家当前位置到 (tx, ty) 的最短路径。
+ *
+ * 为了让「点击格子自动移动」不误伤局面，把除目标格外的
+ * 其他「有物品的格子」一律视为障碍（绕开，避免途中拾取/合成/改写）。
+ * 门状态按当前 doorOpen 判定（不会考虑途中踩压力板开门，这是最小实现取舍）。
+ *
+ * @returns 步进数组 [[dx,dy],...]；目标不可达返回 null；已在目标返回 []。
+ */
+export function findPath(state, tx, ty) {
+  const sx = state.player.x, sy = state.player.y;
+  if (tx === sx && ty === sy) return [];
+  if (tx < 0 || ty < 0 || tx >= state.cols || ty >= state.rows) return null;
+
+  const key = (x, y) => y * state.cols + x;
+  const targetK = key(tx, ty);
+
+  const passable = (x, y) => {
+    const t = state.grid[y][x];
+    if (t === WALL) return false;
+    if (t === DOOR && !state.doorOpen) return false;
+    if (t === GATE) {
+      const gate = state.gates.find(g => g.x === x && g.y === y);
+      if (gate && !requireMatches(gate.require, state.player.hand)) return false;
+    }
+    // 途中物品视为障碍（目标格除外，最后一步可正常拾取/合成）
+    if ((x !== tx || y !== ty) && itemAt(state, x, y)) return false;
+    return true;
+  };
+
+  const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const prev = new Map();
+  const visited = new Set([key(sx, sy)]);
+  const queue = [[sx, sy]];
+
+  while (queue.length) {
+    const [cx, cy] = queue.shift();
+    if (cx === tx && cy === ty) break;
+    for (const [dx, dy] of dirs) {
+      const nx = cx + dx, ny = cy + dy;
+      if (nx < 0 || ny < 0 || nx >= state.cols || ny >= state.rows) continue;
+      const nk = key(nx, ny);
+      if (visited.has(nk) || !passable(nx, ny)) continue;
+      visited.add(nk);
+      prev.set(nk, [cx, cy]);
+      queue.push([nx, ny]);
+    }
+  }
+
+  if (!visited.has(targetK)) return null;
+
+  // 回溯得到从起点到目标每步的位移
+  const steps = [];
+  let cx = tx, cy = ty;
+  while (cx !== sx || cy !== sy) {
+    const p = prev.get(key(cx, cy));
+    if (!p) return null;
+    steps.push([cx - p[0], cy - p[1]]);
+    cx = p[0];
+    cy = p[1];
+  }
+  return steps.reverse();
+}

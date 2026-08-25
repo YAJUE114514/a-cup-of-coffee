@@ -55,6 +55,8 @@ export function renderBoard(container, state) {
       else if (t === DOOR) cls = 'cell door' + (state.doorOpen ? ' open' : '');
       else if (t === GATE) cls = 'cell gate';
       cell.className = cls;
+      cell.dataset.x = x; // 供点击寻路
+      cell.dataset.y = y;
 
       // 地形上的装饰
       if (t === PLATE) {

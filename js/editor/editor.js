@@ -10,9 +10,11 @@
 import {
   TYPES, TYPE_INFO, WALL, FLOOR, PLATE, DOOR, GATE, TAG_REQUIRE,
 } from '../data/types.js';
+import { encodeLevel, decodeLevel, CODE_VER } from '../data/codec.js';
 import { createGameState } from '../game/state.js';
 import { step, drop, checkWin } from '../game/judge.js';
 import { renderBoard, renderHand } from '../game/renderer.js';
+import { initTouchControls } from '../game/touch.js';
 
 // ---- DOM ----
 const canvas = document.getElementById('canvas');
@@ -25,13 +27,12 @@ const handSelect = document.getElementById('hand-select');
 const gateRequireSelect = document.getElementById('gate-require');
 const output = document.getElementById('output');
 const warningsEl = document.getElementById('warnings');
-const btnExport = document.getElementById('btn-export');
-const btnCopy = document.getElementById('btn-copy');
+const btnCopyJson = document.getElementById('btn-copy-json');
 const btnClear = document.getElementById('btn-clear');
 const btnLoad = document.getElementById('btn-load');
 const btnTest = document.getElementById('btn-test');
 const btnCopyCode = document.getElementById('btn-copy-code');
-const btnLoadCode = document.getElementById('btn-load-code');
+const btnShareLink = document.getElementById('btn-share-link');
 const editorMeta = document.getElementById('editor-meta');
 const editorWorkspace = document.getElementById('editor-workspace');
 const editorExport = document.getElementById('editor-export');
@@ -41,6 +42,7 @@ const testHand = document.getElementById('test-hand');
 const testHana = document.getElementById('test-hana');
 const testExit = document.getElementById('test-exit');
 const testReset = document.getElementById('test-reset');
+const testTouch = document.getElementById('test-touch');
 
 // ---- 编辑器状态 ----
 const editor = {
@@ -322,128 +324,14 @@ function collectItems() {
   return items;
 }
 
-// ---- 关卡 Code 编解码（紧凑分享格式 v2）----
-const CODE_VER = 'v2';
-const COORDS = 'abcdefghijklmnopqrstuvwxyz'; // a=0 ... z=25
-const TYPE_TO_CODE = {
-  [TYPES.BEANS]: 'b',
-  [TYPES.CUP]: 'c',
-  [TYPES.COFFEE]: 'C',
-  [TYPES.TAG_BEANS]: '1',
-  [TYPES.TAG_CUP]: '2',
-  [TYPES.TAG_COFFEE]: '3',
-  [TYPES.TAG_TAG]: '4',
-  [TAG_REQUIRE]: 't', // 检查门 require 通配
-};
-const CODE_TO_TYPE = {};
-for (const [k, v] of Object.entries(TYPE_TO_CODE)) CODE_TO_TYPE[v] = k;
-const coord = n => COORDS[n] ?? '?';
-const uncoord = ch => COORDS.indexOf(ch);
-
-// v2 网格字符分类：
-//   地形单字符：W 墙 / F 地板 / D 机关门（P、G 有双字符组合，单独处理）
-//   物品单字符：b 豆 / c 杯 / C 咖啡 / 1~4 tag（表示「地板 + 物品」）
-//   双字符组合：P<字母> = 压力板+物品；G<字母> = 检查门 + 要求物品
-const TERRAIN_SINGLE = 'WFD';
-const ITEM_SINGLE = 'bcC1234';
-
 /**
- * 把当前关卡编码为紧凑字符串：
- *   v2|{cols}x{rows}|{grid}|{player}
- *  - grid：每格一字符，物品/检查门直接合并进网格（P<物品>、G<要求>）
- *  - player：3 字符（坐标x + 坐标y + 起手码，空手为 '.'）
+ * 把关卡对象编码为紧凑分享 Code（编解码逻辑统一在 js/data/codec.js）。
+ * 无玩家起点返回 null。
  */
 function encodeCode() {
   const level = buildLevelObject();
   if (!level) return null;
-  const itemsMap = new Map(level.items.map(it => [`${it.x},${it.y}`, it.type]));
-  const gatesMap = new Map((level.gates || []).map(g => [`${g.x},${g.y}`, g.require]));
-  let gridStr = '';
-  for (let y = 0; y < level.rows; y++) {
-    for (let x = 0; x < level.cols; x++) {
-      const t = level.grid[y][x];
-      const item = itemsMap.get(`${x},${y}`);
-      const gate = gatesMap.get(`${x},${y}`);
-      if (t === 'P' && item) gridStr += 'P' + TYPE_TO_CODE[item];
-      else if (t === 'P') gridStr += 'P.'; // 空压力板，避免与「P+物品」歧义
-      else if (t === 'G' && gate) gridStr += 'G' + TYPE_TO_CODE[gate];
-      else if (t === 'F' && item) gridStr += TYPE_TO_CODE[item];
-      else gridStr += t;
-    }
-  }
-  const playerStr = coord(level.player.x) + coord(level.player.y)
-    + (level.player.hand ? TYPE_TO_CODE[level.player.hand] : '.');
-  return `${CODE_VER}|${level.cols}x${level.rows}|${gridStr}|${playerStr}`;
-}
-
-/** 解析关卡 Code，返回关卡对象；格式错误抛异常 */
-function decodeCode(code) {
-  const parts = code.split('|');
-  if (parts.length < 4) throw new Error('格式不完整');
-  const [ver, size, gridStr, playerStr] = parts;
-  if (ver !== CODE_VER) throw new Error('版本不支持');
-
-  const m = /^(\d+)x(\d+)$/.exec(size);
-  if (!m) throw new Error('尺寸格式错误');
-  const cols = +m[1], rows = +m[2];
-  if (cols < 4 || cols > 12 || rows < 4 || rows > 12) throw new Error(`尺寸 ${cols}×${rows} 超出 4~12`);
-
-  // 解析合并网格：地形 + 物品 + 检查门
-  const flat = [];
-  const items = [];
-  const gates = [];
-  let i = 0, idx = 0;
-  while (i < gridStr.length) {
-    if (idx >= cols * rows) throw new Error('网格数据过长');
-    const x = idx % cols, y = Math.floor(idx / cols);
-    const ch = gridStr[i];
-    if (ch === 'P') { // 压力板：P<物品> 带物品，P. 空压力板
-      const nx = gridStr[i + 1];
-      if (ITEM_SINGLE.includes(nx)) {
-        flat.push('P');
-        items.push({ type: CODE_TO_TYPE[nx], x, y });
-        i += 2;
-      } else if (nx === '.') {
-        flat.push('P');
-        i += 2;
-      } else {
-        throw new Error('压力板字符格式错误');
-      }
-    } else if (ch === 'G') { // 检查门（带要求物品，双字符）
-      const nx = gridStr[i + 1];
-      if (ITEM_SINGLE.includes(nx) || nx === 't') {
-        flat.push('G');
-        gates.push({ x, y, require: CODE_TO_TYPE[nx] });
-        i += 2;
-      } else {
-        flat.push('G');
-        gates.push({ x, y, require: TYPES.BEANS });
-        i++;
-      }
-    } else if (TERRAIN_SINGLE.includes(ch)) {
-      flat.push(ch);
-      i++;
-    } else if (ITEM_SINGLE.includes(ch)) {
-      flat.push('F');
-      items.push({ type: CODE_TO_TYPE[ch], x, y });
-      i++;
-    } else {
-      throw new Error('未知字符: ' + ch);
-    }
-    idx++;
-  }
-  if (idx !== cols * rows) throw new Error('网格长度不符');
-
-  const grid = [];
-  for (let y = 0; y < rows; y++) grid.push(flat.slice(y * cols, (y + 1) * cols));
-
-  // 玩家
-  if (playerStr.length !== 3) throw new Error('玩家数据错误');
-  const px = uncoord(playerStr[0]), py = uncoord(playerStr[1]);
-  if (px < 0 || py < 0) throw new Error('玩家坐标错误');
-  const hand = playerStr[2] === '.' ? null : CODE_TO_TYPE[playerStr[2]] || null;
-
-  return { id: 'shared', name: '分享关卡', hanaLine: '', cols, rows, grid, player: { x: px, y: py, hand }, items, gates };
+  return encodeLevel(level);
 }
 
 /** 由编辑器状态组装关卡对象（深拷贝 grid）；无起点返回 null */
@@ -469,7 +357,11 @@ function buildLevelObject() {
   return level;
 }
 
-function exportLevel() {
+/**
+ * 生成 JSON 并写入文本框 + 复制到剪贴板
+ * （合并原「导出 JSON」与「复制」；无玩家起点时只提示，不复制）。
+ */
+function copyJson() {
   const warnings = [];
 
   if (!editor.playerStart) {
@@ -484,16 +376,14 @@ function exportLevel() {
       warnings.push(`ℹ️ 玩家起点上有个「${TYPE_INFO[startItem].label}」，开局会站在它上面`);
     }
   }
+  renderWarnings(warnings);
 
   const level = buildLevelObject();
-  if (!level) {
-    renderWarnings(warnings);
-    return; // 起点是硬性要求，缺了就不导出
-  }
+  if (!level) return; // 起点是硬性要求，缺了就不复制
 
-  output.value = JSON.stringify(level, null, 2);
-  renderWarnings(warnings);
-  flashBtn(btnExport, '✅ 已导出');
+  const json = JSON.stringify(level, null, 2);
+  output.value = json;
+  copyText(json, btnCopyJson, '✅ 已复制 JSON');
 }
 
 function renderWarnings(list) {
@@ -579,7 +469,7 @@ function loadFromText(text) {
   if (!t) return;
   if (t.startsWith(CODE_VER + '|')) {
     try {
-      const level = decodeCode(t);
+      const level = decodeLevel(t);
       if (!applyLevel(level)) return;
       flashBtn(btnLoad, '✅ 已加载');
     } catch (err) {
@@ -601,22 +491,23 @@ function copyCode() {
   copyText(code, btnCopyCode, '✅ 已复制 Code');
 }
 
-/** 从剪贴板导入关卡 Code */
-async function importCode() {
-  let text = '';
-  try {
-    text = await navigator.clipboard.readText();
-  } catch {
-    text = prompt('请粘贴关卡 Code：');
+/**
+ * 生成并复制「游戏内可直接游玩的分享链接」。
+ * 链接格式：index.html?play=<Code>&name=<关卡名>&line=<hana台词>
+ */
+async function shareLink() {
+  const code = encodeCode();
+  if (!code) {
+    alert('❌ 请先设置玩家起点，才能生成分享链接');
+    return;
   }
-  if (!text) return;
-  try {
-    const level = decodeCode(text.trim());
-    if (!applyLevel(level)) return;
-    flashBtn(btnLoadCode, '✅ 已导入');
-  } catch (err) {
-    alert('❌ Code 无效：' + err.message);
-  }
+  const url = new URL(location.href);
+  url.pathname = url.pathname.replace(/[^/]*$/, 'index.html'); // editor.html -> index.html
+  url.search = '';
+  url.searchParams.set('play', code);
+  if (metaName.value.trim()) url.searchParams.set('name', metaName.value.trim());
+  if (metaLine.value.trim()) url.searchParams.set('line', metaLine.value.trim());
+  copyText(url.toString(), btnShareLink, '✅ 链接已复制');
 }
 
 function copyText(text, btn, msg) {
@@ -691,6 +582,39 @@ function resetTest() {
   }
 }
 
+function testPush(snap) {
+  if (testHistory.length >= 100) testHistory.shift();
+  testHistory.push(snap);
+}
+
+function handleTestMove(dx, dy) {
+  if (!testState || testState.win) return;
+  const snap = JSON.parse(JSON.stringify(testState));
+  if (dx < 0) testState.player.facing = 'left';
+  else if (dx > 0) testState.player.facing = 'right';
+  const r = step(testState, dx, dy);
+  if (r.action !== 'blocked') testPush(snap);
+  if (checkWin(testState)) testState.win = true;
+  renderTest();
+}
+
+function handleTestDrop() {
+  if (!testState || testState.win) return;
+  const snap = JSON.parse(JSON.stringify(testState));
+  const r = drop(testState);
+  if (r.action === 'drop') testPush(snap);
+  renderTest();
+}
+
+function handleTestUndo() {
+  if (!testState || testState.win) return;
+  if (testHistory.length) {
+    testState = testHistory.pop();
+    testHana.classList.add('hidden');
+    renderTest();
+  }
+}
+
 function handleTestKey(e) {
   if (!testState) return;
   if (testState.win) {
@@ -700,45 +624,14 @@ function handleTestKey(e) {
   const key = e.key;
   if (key === 'Escape') { e.preventDefault(); exitTest(); return; }
   if (key === 'r' || key === 'R') { resetTest(); return; }
-  if (key === 'z' || key === 'Z') { // 撤销一步
-    if (testHistory.length) {
-      testState = testHistory.pop();
-      testHana.classList.add('hidden');
-      renderTest();
-    }
-    return;
-  }
-  if (key === 'f' || key === 'F') {
-    const snap = JSON.parse(JSON.stringify(testState));
-    const r = drop(testState);
-    if (r.action === 'drop') { testHistory.push(snap); if (testHistory.length > 100) testHistory.shift(); }
-    renderTest();
-    return;
-  }
+  if (key === 'z' || key === 'Z') { handleTestUndo(); return; }
+  if (key === 'f' || key === 'F') { handleTestDrop(); return; }
 
   const move = TEST_KEYS[key] || TEST_KEYS[key.toLowerCase()];
   if (move) {
     e.preventDefault();
-    const snap = JSON.parse(JSON.stringify(testState));
-    if (move[0] < 0) testState.player.facing = 'left';
-    else if (move[0] > 0) testState.player.facing = 'right';
-    const r = step(testState, move[0], move[1]);
-    if (r.action !== 'blocked') { testHistory.push(snap); if (testHistory.length > 100) testHistory.shift(); }
-    if (checkWin(testState)) testState.win = true;
-    renderTest();
+    handleTestMove(move[0], move[1]);
   }
-}
-
-async function copyOutput() {
-  if (!output.value) return;
-  try {
-    await navigator.clipboard.writeText(output.value);
-  } catch {
-    output.select();
-    document.execCommand('copy');
-    output.setSelectionRange(0, 0);
-  }
-  flashBtn(btnCopy, '✅ 已复制');
 }
 
 function flashBtn(btn, msg) {
@@ -770,11 +663,10 @@ function bindEvents() {
   colsInput.addEventListener('change', resizeGrid);
   rowsInput.addEventListener('change', resizeGrid);
 
-  btnExport.addEventListener('click', exportLevel);
-  btnCopy.addEventListener('click', copyOutput);
+  btnCopyJson.addEventListener('click', copyJson);
   btnLoad.addEventListener('click', () => loadFromText(output.value));
   btnCopyCode.addEventListener('click', copyCode);
-  btnLoadCode.addEventListener('click', importCode);
+  btnShareLink.addEventListener('click', shareLink);
   btnClear.addEventListener('click', () => {
     resetEditor();
     renderCanvas();
@@ -786,6 +678,14 @@ function bindEvents() {
   testReset.addEventListener('click', resetTest);
   window.addEventListener('keydown', (e) => {
     if (!testMode.classList.contains('hidden')) handleTestKey(e);
+  });
+
+  // 试玩触屏虚拟按键（触屏设备才显示）
+  initTouchControls(testTouch, {
+    move: handleTestMove,
+    drop: handleTestDrop,
+    undo: handleTestUndo,
+    reset: resetTest,
   });
 }
 

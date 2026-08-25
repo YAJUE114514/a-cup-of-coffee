@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>🐳 a cup of coffee</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -15,6 +15,7 @@
       <h1 class="game-title">a cup of coffee</h1>
       <p class="tagline">小虎鲸 hana 的实验室咖啡大作战</p>
       <button id="btn-start" class="primary-btn">开始游戏</button>
+      <button id="btn-share-play" class="ghost-btn">📥 游玩分享关卡</button>
       <a href="editor.html" class="editor-link">🛠 地图编辑器</a>
     </section>
 
@@ -49,11 +50,40 @@
       <span class="control-tip">操作提示：R 重置 · Z 撤销 · F 放下</span>
       <p id="hana-tip" class="hana-tip hidden"></p>
 
+      <!-- 触屏虚拟按键（触屏设备显示，由 touch.js 控制） -->
+      <div id="touch-controls" class="touch-controls hidden">
+        <div class="dpad">
+          <button class="tbtn t-up"    data-dx="0"  data-dy="-1" aria-label="上">↑</button>
+          <button class="tbtn t-left"  data-dx="-1" data-dy="0"  aria-label="左">←</button>
+          <button class="tbtn t-down"  data-dx="0"  data-dy="1"  aria-label="下">↓</button>
+          <button class="tbtn t-right" data-dx="1"  data-dy="0"  aria-label="右">→</button>
+        </div>
+        <div class="actions">
+          <button class="tbtn t-drop"  data-action="drop"  aria-label="放下">放下</button>
+          <button class="tbtn t-undo"  data-action="undo"  aria-label="撤销">撤销</button>
+          <button class="tbtn t-reset" data-action="reset" aria-label="重置">重置</button>
+        </div>
+      </div>
+
       <div id="win-overlay" class="hidden">
         <p id="win-text">搞定！下一间实验室。</p>
         <button id="next-btn" class="primary-btn">下一关 ▶</button>
       </div>
     </section>
+
+    <!-- 游玩分享关卡弹窗 -->
+    <div id="share-modal" class="modal hidden">
+      <div class="modal-card">
+        <h3>📥 游玩分享关卡</h3>
+        <p class="modal-sub">粘贴关卡 Code 或分享链接，即可游玩</p>
+        <textarea id="share-input" rows="4" placeholder="v2|8x6|... 或 https://..."></textarea>
+        <p id="share-error" class="share-error hidden"></p>
+        <div class="modal-btns">
+          <button id="btn-share-ok" class="primary-btn">开始游玩</button>
+          <button id="btn-share-cancel" class="ghost-btn">取消</button>
+        </div>
+      </div>
+    </div>
 
   </div>
   <script type="module" src="js/game/main.js"></script>
